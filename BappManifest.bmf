@@ -1,0 +1,12 @@
+Uuid: b3a7f2c1e9d44a8b9c0e1f2a3b4c5d6e
+ExtensionType: 1
+Name: OpenAPI-NG
+RepoName: BopenAPI
+ScreenVersion: 1.0
+SerialVersion: 1
+MinPlatformVersion: 0
+ProOnly: False
+Author: jabberwock
+ShortDescription: Next-generation OpenAPI parser: load specs from URL, file, or paste, then send endpoints to Scanner, Repeater, or Intruder.
+EntryPoint: build/libs/OpenAPI-NG-1.0.jar
+BuildCommand: ./gradlew build
