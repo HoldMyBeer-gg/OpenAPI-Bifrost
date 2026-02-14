@@ -1,0 +1,29 @@
+openapi: 3.0.3
+info:
+  title: Sample API
+  version: "0.1.0"
+
+servers:
+  - url: https://api.example.com
+    description: Production
+
+paths:
+  /serviceability:
+    get:
+      summary: Check serviceability for a ZIP code
+      parameters:
+        - in: query
+          name: zipcode
+          schema:
+            type: string
+          required: true
+      responses:
+        '200':
+          description: Serviceability information
+
+  /address/check/v1:
+    post:
+      summary: Address check / validation
+      responses:
+        '200':
+          description: Address check result
