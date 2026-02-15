@@ -36,7 +36,7 @@ public class RequestGenerator {
      * @param baseUrlOverride optional base URL to use instead of the endpoint's server
      * @return raw HTTP request bytes
      */
-    byte[] buildRequestBytes(ApiEndpoint endpoint, String baseUrlOverride) {
+    public byte[] buildRequestBytes(ApiEndpoint endpoint, String baseUrlOverride) {
         String requestStr = buildRequestString(endpoint, baseUrlOverride);
         return requestStr.getBytes(StandardCharsets.UTF_8);
     }
