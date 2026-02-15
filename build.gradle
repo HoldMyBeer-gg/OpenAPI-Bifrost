@@ -3,7 +3,7 @@ plugins {
     id 'jacoco'
 }
 
-group = 'burp.bopenapi'
+group = 'burp.openapilng'
 version = '1.0'
 
 java {
@@ -42,9 +42,9 @@ jacocoTestReport {
     }
     afterEvaluate {
         def exclusion = [
-            '**/BopenAPIExtension.class',
-            '**/BopenAPITab.class',
-            '**/BopenAPITab$*.class',
+            '**/OpenAPINGExtension.class',
+            '**/OpenAPINGTab.class',
+            '**/OpenAPINGTab$*.class',
             '**/RequestGenerator.class'
         ]
         classDirectories.setFrom(files(classDirectories.files.collect {
@@ -56,9 +56,9 @@ jacocoTestReport {
 jacocoTestCoverageVerification {
     afterEvaluate {
         def exclusion = [
-            '**/BopenAPIExtension.class',
-            '**/BopenAPITab.class',
-            '**/BopenAPITab$*.class',
+            '**/OpenAPINGExtension.class',
+            '**/OpenAPINGTab.class',
+            '**/OpenAPINGTab$*.class',
             '**/RequestGenerator.class'
         ]
         classDirectories.setFrom(files(classDirectories.files.collect {
@@ -82,7 +82,7 @@ jar {
     archiveBaseName = 'OpenAPI-NG'
     duplicatesStrategy = DuplicatesStrategy.EXCLUDE
     manifest {
-        attributes 'Extension-Class': 'burp.bopenapi.BopenAPIExtension'
+        attributes 'Extension-Class': 'burp.openapilng.OpenAPINGExtension'
     }
     from {
         configurations.runtimeClasspath.collect { it.isDirectory() ? it : zipTree(it) }

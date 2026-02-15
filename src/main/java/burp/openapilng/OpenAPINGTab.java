@@ -1,4 +1,4 @@
-package burp.bopenapi;
+package burp.openapilng;
 
 import burp.api.montoya.MontoyaApi;
 import burp.api.montoya.http.message.requests.HttpRequest;
@@ -37,7 +37,7 @@ import java.util.concurrent.Executors;
  * @since 1.0
  * Copyright (c) 2026 jabberwock
  */
-public class BopenAPITab extends JPanel {
+public class OpenAPINGTab extends JPanel {
 
     private final MontoyaApi api;
     private final Logging logging;
@@ -57,7 +57,7 @@ public class BopenAPITab extends JPanel {
     private String defaultServer = "";
     private boolean hasScanner = false;
 
-    public BopenAPITab(MontoyaApi api) {
+    public OpenAPINGTab(MontoyaApi api) {
         this.api = api;
         this.logging = api.logging();
         try {
@@ -378,7 +378,7 @@ public class BopenAPITab extends JPanel {
 
     private void setupContextMenu() {
         JPopupMenu popup = new JPopupMenu();
-        JMenu bopenMenu = new JMenu("OpenAPI-NG");
+        JMenu openapiMenu = new JMenu("OpenAPI-NG");
         JMenuItem scanItem = new JMenuItem("Actively Scan");
         scanItem.setEnabled(hasScanner);
         if (!hasScanner) {
@@ -389,10 +389,10 @@ public class BopenAPITab extends JPanel {
         repeaterItem.addActionListener(e -> doSendToRepeater());
         JMenuItem intruderItem = new JMenuItem("Send to Intruder");
         intruderItem.addActionListener(e -> doSendToIntruder());
-        bopenMenu.add(scanItem);
-        bopenMenu.add(repeaterItem);
-        bopenMenu.add(intruderItem);
-        popup.add(bopenMenu);
+        openapiMenu.add(scanItem);
+        openapiMenu.add(repeaterItem);
+        openapiMenu.add(intruderItem);
+        popup.add(openapiMenu);
 
         endpointTable.setComponentPopupMenu(popup);
         endpointTable.addMouseListener(new MouseAdapter() {

@@ -1,4 +1,4 @@
-package burp.bopenapi;
+package burp.openapilng;
 
 import burp.api.montoya.BurpExtension;
 import burp.api.montoya.MontoyaApi;
@@ -14,13 +14,13 @@ import burp.api.montoya.MontoyaApi;
  * @since 1.0
  * Copyright (c) 2026 jabberwock
  */
-public class BopenAPIExtension implements BurpExtension {
+public class OpenAPINGExtension implements BurpExtension {
 
     @Override
     public void initialize(MontoyaApi api) {
         api.extension().setName("OpenAPI-NG");
 
-        BopenAPITab tab = new BopenAPITab(api);
+        OpenAPINGTab tab = new OpenAPINGTab(api);
         api.userInterface().applyThemeToComponent(tab);
         api.userInterface().registerSuiteTab("OpenAPI-NG", tab);
 

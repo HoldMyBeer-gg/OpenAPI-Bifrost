@@ -1,4 +1,4 @@
-package burp.bopenapi;
+package burp.openapilng;
 
 import burp.api.montoya.core.Range;
 import burp.api.montoya.http.HttpService;
