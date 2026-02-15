@@ -80,4 +80,87 @@ class EndpointTableModelTest {
         var selected = model.getSelectedEndpoints(new int[]{0, 1});
         assertEquals(2, selected.size());
     }
+
+    @Test
+    void formatParams_multipleTypes() {
+        var params = List.of(
+                new ApiEndpoint.ParameterInfo("id", "path", "1"),
+                new ApiEndpoint.ParameterInfo("limit", "query", "10"),
+                new ApiEndpoint.ParameterInfo("token", "header", "xyz")
+        );
+        var ep = new ApiEndpoint(1, "https", "GET", "https://api.test.com", "/users/{id}", params, "");
+        model.setEndpoints(List.of(ep));
+        String paramStr = (String) model.getValueAt(0, 5);
+        assertTrue(paramStr.contains("PATH:id"));
+        assertTrue(paramStr.contains("QUERY:limit"));
+        assertTrue(paramStr.contains("HEADER:token"));
+    }
+
+    @Test
+    void formatParams_emptyList() {
+        var ep = new ApiEndpoint(1, "https", "GET", "https://api.test.com", "/users", List.of(), "");
+        model.setEndpoints(List.of(ep));
+        String paramStr = (String) model.getValueAt(0, 5);
+        assertEquals("", paramStr);
+    }
+
+    @Test
+    void getValueAt_allColumns() {
+        model.setEndpoints(endpoints);
+        assertEquals(1, model.getValueAt(0, 0)); // index
+        assertEquals("https", model.getValueAt(0, 1)); // scheme
+        assertEquals("GET", model.getValueAt(0, 2)); // method
+        assertEquals("https://api.test.com", model.getValueAt(0, 3)); // server
+        assertEquals("/users", model.getValueAt(0, 4)); // path
+        assertNotNull(model.getValueAt(0, 5)); // parameters
+        assertEquals("List", model.getValueAt(0, 6)); // description
+    }
+
+    @Test
+    void getValueAt_invalidColumn_returnsEmpty() {
+        model.setEndpoints(endpoints);
+        assertEquals("", model.getValueAt(0, 99));
+    }
+
+    @Test
+    void setFilter_emptyString_showsAll() {
+        model.setEndpoints(endpoints);
+        model.setFilter("");
+        assertEquals(2, model.getFilterHitCount());
+    }
+
+    @Test
+    void setFilter_null_showsAll() {
+        model.setEndpoints(endpoints);
+        model.setFilter(null);
+        assertEquals(2, model.getFilterHitCount());
+    }
+
+    @Test
+    void setFilter_noMatch_returnsZero() {
+        model.setEndpoints(endpoints);
+        model.setFilter("NOTFOUND");
+        assertEquals(0, model.getFilterHitCount());
+    }
+
+    @Test
+    void setFilter_caseInsensitiveRegex() {
+        model.setEndpoints(endpoints);
+        model.setFilter("(?i)post");
+        assertEquals(1, model.getFilterHitCount());
+    }
+
+    @Test
+    void getSelectedEndpoints_emptyArray() {
+        model.setEndpoints(endpoints);
+        var selected = model.getSelectedEndpoints(new int[]{});
+        assertEquals(0, selected.size());
+    }
+
+    @Test
+    void getSelectedEndpoints_invalidIndices() {
+        model.setEndpoints(endpoints);
+        var selected = model.getSelectedEndpoints(new int[]{-1, 99});
+        assertEquals(0, selected.size());
+    }
 }

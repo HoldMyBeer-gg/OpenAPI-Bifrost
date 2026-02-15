@@ -120,6 +120,61 @@ class OpenAPIParserTest {
         assertEquals("https://api.example.com", result.getDefaultServer());
     }
 
+    @Test
+    void parse_serverUrlWithoutScheme_handlesGracefully() {
+        String json = """
+            {"openapi":"3.0","info":{"title":"x","version":"1"},"servers":[{"url":"api.example.com"}],"paths":{"/test":{"get":{}}}}
+            """;
+        var result = parser.parse("test", json);
+        assertFalse(result.getEndpoints().isEmpty());
+    }
+
+    @Test
+    void parse_multipleServers_usesFirst() {
+        String json = """
+            {"openapi":"3.0","info":{"title":"x","version":"1"},"servers":[{"url":"https://api.example.com"},{"url":"https://api2.example.com"}],"paths":{"/test":{"get":{}}}}
+            """;
+        var result = parser.parse("test", json);
+        assertEquals("https://api.example.com", result.getDefaultServer());
+    }
+
+    @Test
+    void parse_operationWithoutParameters_returnsEndpoint() {
+        String json = """
+            {"openapi":"3.0","info":{"title":"x","version":"1"},"paths":{"/simple":{"get":{"summary":"Simple endpoint"}}}}
+            """;
+        var result = parser.parse("test", json);
+        assertFalse(result.getEndpoints().isEmpty());
+        assertEquals("Simple endpoint", result.getEndpoints().get(0).getDescription());
+    }
+
+    @Test
+    void parse_operationWithDescription_usesDescription() {
+        String json = """
+            {"openapi":"3.0","info":{"title":"x","version":"1"},"paths":{"/test":{"get":{"description":"Detailed description"}}}}
+            """;
+        var result = parser.parse("test", json);
+        assertEquals("Detailed description", result.getEndpoints().get(0).getDescription());
+    }
+
+    @Test
+    void parse_httpScheme_extractsHttp() {
+        String json = """
+            {"openapi":"3.0","info":{"title":"x","version":"1"},"servers":[{"url":"http://api.example.com"}],"paths":{"/test":{"get":{}}}}
+            """;
+        var result = parser.parse("test", json);
+        assertEquals("http", result.getEndpoints().get(0).getScheme());
+    }
+
+    @Test
+    void parse_jsonWithBracePrefix_stripsProperly() {
+        String json = """
+            {"openapi":"3.0","info":{"title":"x","version":"1"},"paths":{"/test":{"get":{}}}}
+            """;
+        var result = parser.parse("test", json);
+        assertFalse(result.getEndpoints().isEmpty());
+    }
+
     private String readResource(String name) throws Exception {
         try (InputStream is = OpenAPIParserTest.class.getResourceAsStream("/" + name)) {
             assert is != null : "Resource not found: " + name;
