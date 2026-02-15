@@ -175,6 +175,89 @@ class OpenAPIParserTest {
         assertFalse(result.getEndpoints().isEmpty());
     }
 
+    @Test
+    void parse_headerAndCookieParameters_extracted() {
+        String json = """
+            {"openapi":"3.0","info":{"title":"x","version":"1"},"paths":{"/test":{"get":{
+            "parameters":[
+                {"name":"Authorization","in":"header"},
+                {"name":"session","in":"cookie"}
+            ]
+            }}}}
+            """;
+        var result = parser.parse("test", json);
+        assertEquals(1, result.getEndpoints().size());
+        var params = result.getEndpoints().get(0).getParameters();
+        assertEquals(2, params.size());
+        assertTrue(params.stream().anyMatch(p -> "header".equals(p.getLocation()) && "Authorization".equals(p.getName())));
+        assertTrue(params.stream().anyMatch(p -> "cookie".equals(p.getLocation()) && "session".equals(p.getName())));
+    }
+
+    @Test
+    void parse_malformedServerUrl_handlesGracefully() {
+        String json = """
+            {"openapi":"3.0","info":{"title":"x","version":"1"},"servers":[{"url":"ht!tp://invalid url with spaces"}],"paths":{"/test":{"get":{}}}}
+            """;
+        var result = parser.parse("test", json);
+        assertFalse(result.getEndpoints().isEmpty());
+        // Should use default https scheme when URL parsing fails
+        assertEquals("https", result.getEndpoints().get(0).getScheme());
+    }
+
+    @Test
+    void parse_emptyServersList_usesDefaultServer() {
+        String json = """
+            {"openapi":"3.0","info":{"title":"x","version":"1"},"servers":[],"paths":{"/test":{"get":{}}}}
+            """;
+        var result = parser.parse("test", json);
+        assertEquals("", result.getDefaultServer());
+    }
+
+    @Test
+    void parse_serverUrlWithOnlySlash_normalized() {
+        String json = """
+            {"openapi":"3.0","info":{"title":"x","version":"1"},"servers":[{"url":"/"}],"paths":{"/test":{"get":{}}}}
+            """;
+        var result = parser.parse("test", json);
+        assertEquals("", result.getDefaultServer());
+    }
+
+    @Test
+    void parse_emptyStringContent_returnsError() {
+        var result = parser.parse("test", "");
+        assertTrue(result.getEndpoints().isEmpty());
+        assertFalse(result.getMessages().isEmpty());
+    }
+
+    @Test
+    void parse_contentWithoutOpenAPIPrefix_parsedAsIs() {
+        // Content that doesn't start with openapi:, swagger:, or { should be returned as-is and fail parsing
+        String invalidContent = "This is not an OpenAPI spec at all\njust some random text";
+        var result = parser.parse("test", invalidContent);
+        assertTrue(result.getEndpoints().isEmpty());
+        assertFalse(result.getMessages().isEmpty());
+    }
+
+    @Test
+    void parse_corruptedJson_returnsErrorWithoutMessages() {
+        // Completely broken JSON that makes parser return null without helpful messages
+        String corrupt = "{\"broken\":}";
+        var result = parser.parse("test", corrupt);
+        assertTrue(result.getEndpoints().isEmpty());
+        assertFalse(result.getMessages().isEmpty());
+    }
+
+    @Test
+    void parse_openApiWithoutPaths_returnsEmpty() {
+        // Valid OpenAPI structure but missing paths entirely
+        String json = """
+            {"openapi":"3.0.0","info":{"title":"Test","version":"1.0"}}
+            """;
+        var result = parser.parse("test", json);
+        assertTrue(result.getEndpoints().isEmpty());
+        // Should still parse successfully, just no endpoints
+    }
+
     private String readResource(String name) throws Exception {
         try (InputStream is = OpenAPIParserTest.class.getResourceAsStream("/" + name)) {
             assert is != null : "Resource not found: " + name;

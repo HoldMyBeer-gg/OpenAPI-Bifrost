@@ -163,4 +163,27 @@ class EndpointTableModelTest {
         var selected = model.getSelectedEndpoints(new int[]{-1, 99});
         assertEquals(0, selected.size());
     }
+
+    @Test
+    void getValueAt_afterFiltering_returnsCorrectEndpoint() {
+        model.setEndpoints(endpoints);
+        model.setFilter("POST");
+        // After filtering, row 0 should be the POST endpoint
+        assertEquals("POST", model.getValueAt(0, 2));
+        assertEquals("/users", model.getValueAt(0, 4));
+    }
+
+    @Test
+    void setFilter_matchesServerUrl() {
+        model.setEndpoints(endpoints);
+        model.setFilter("api.test.com");
+        assertEquals(2, model.getFilterHitCount());
+    }
+
+    @Test
+    void setFilter_matchesPath() {
+        model.setEndpoints(endpoints);
+        model.setFilter("/users");
+        assertEquals(2, model.getFilterHitCount());
+    }
 }
