@@ -1215,24 +1215,38 @@ public class OpenAPIBifrostTab extends JPanel {
         }
         if (risky.isEmpty()) return selected;
 
-        StringBuilder msg = new StringBuilder("<html><body style='width:520px'>");
-        msg.append(risky.size()).append(" of ").append(selected.size())
-                .append(" selected endpoints look destructive. Running them across identities<br>")
-                .append("may invalidate the sessions you're comparing or mutate server state:<br><br>");
+        StringBuilder text = new StringBuilder();
+        text.append(risky.size()).append(" of ").append(selected.size())
+                .append(" selected endpoints look destructive. Running them\n")
+                .append("across identities may invalidate the sessions you're comparing\n")
+                .append("or mutate server state:\n\n");
         int shown = 0;
+        int maxMethodWidth = 0;
         for (ApiEndpoint ep : risky) {
             if (shown++ >= 12) break;
-            msg.append("&nbsp;&nbsp;• <b>").append(ep.getMethod()).append("</b> ").append(escapeHtml(ep.getPath()));
+            maxMethodWidth = Math.max(maxMethodWidth, ep.getMethod().length());
+        }
+        shown = 0;
+        for (ApiEndpoint ep : risky) {
+            if (shown++ >= 12) break;
+            text.append("  • ").append(padRight(ep.getMethod(), maxMethodWidth)).append("  ")
+                    .append(ep.getPath());
             String reason = DestructiveEndpointDetector.reasonFor(ep);
-            if (!reason.isEmpty()) msg.append(" &nbsp;<i>— ").append(escapeHtml(reason)).append("</i>");
-            msg.append("<br>");
+            if (!reason.isEmpty()) text.append("   — ").append(reason);
+            text.append("\n");
         }
         if (risky.size() > 12) {
-            msg.append("&nbsp;&nbsp;… and ").append(risky.size() - 12).append(" more<br>");
+            text.append("  … and ").append(risky.size() - 12).append(" more\n");
         }
-        msg.append("<br>Exclude these from the comparison?</body></html>");
+        text.append("\nExclude these from the comparison?");
 
-        int choice = JOptionPane.showConfirmDialog(this, msg.toString(),
+        JTextArea area = new JTextArea(text.toString());
+        area.setEditable(false);
+        area.setOpaque(false);
+        area.setBorder(null);
+        area.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 12));
+
+        int choice = JOptionPane.showConfirmDialog(this, area,
                 "Destructive endpoints detected",
                 JOptionPane.YES_NO_CANCEL_OPTION, JOptionPane.WARNING_MESSAGE);
         if (choice == JOptionPane.CANCEL_OPTION || choice == JOptionPane.CLOSED_OPTION) return null;
@@ -1246,8 +1260,11 @@ public class OpenAPIBifrostTab extends JPanel {
         return selected; // NO — user explicitly wants to include them
     }
 
-    private static String escapeHtml(String s) {
-        return s == null ? "" : s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;");
+    private static String padRight(String s, int width) {
+        if (s == null) s = "";
+        StringBuilder sb = new StringBuilder(s);
+        while (sb.length() < width) sb.append(' ');
+        return sb.toString();
     }
 
     /** Puts a checkbox next to every identity name; returns those the user enabled, in priority order. */
