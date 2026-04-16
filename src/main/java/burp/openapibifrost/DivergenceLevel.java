@@ -54,16 +54,28 @@ public enum DivergenceLevel {
             case CONSISTENT_ALLOW ->
                     "Every identity got a 2xx — endpoint is effectively public or tiering is broken open.";
             case CONSISTENT_DENY ->
-                    "Every identity got a 4xx/5xx — consistent rejection across all roles.";
+                    "Every identity hit the same wall (same status category) — consistent rejection.";
             case TIERED ->
-                    "Lower-privilege identities denied, higher-privilege allowed — healthy role separation.";
+                    "Higher-privilege identities reached further through the server's stack (auth → resource → success) than lower-privilege ones — healthy role separation.";
             case DIVERGENT ->
-                    "A lower-privilege identity got a 2xx where a higher-privilege one did not — possible authorization inversion.";
+                    "A lower-privilege identity got further through the server's stack than a higher-privilege one — possible authorization inversion.";
         };
     }
 
     /**
      * Classifies a row of cells in identity-priority order.
+     * <p>
+     * Uses a "stack depth" model to distinguish how far each request got through the
+     * server's processing pipeline, rather than a binary allow/deny split:
+     * <ul>
+     *   <li>Depth 2 — 2xx/3xx: request passed auth <em>and</em> resource resolved</li>
+     *   <li>Depth 1 — 404:    request passed auth, resource missing (common when we
+     *                          substitute a fake UUID into a path param)</li>
+     *   <li>Depth 0 — 401/403/400/422/5xx: blocked at auth, validation, or server error</li>
+     * </ul>
+     * This lets the classifier flag {@code [403, 403, 404]} as {@link #TIERED} (SuperAdmin
+     * passed auth that the others didn't, even though no one got a 2xx) instead of
+     * burying it as {@link #CONSISTENT_DENY}.
      *
      * @param cells cells for one endpoint, ordered least-privileged first. {@code null}
      *              entries mean "not yet computed" — the row is considered {@link #UNKNOWN}.
@@ -77,24 +89,53 @@ public enum DivergenceLevel {
         long errorCount = cells.stream().filter(RbacCellResult::isError).count();
         if (errorCount == cells.size()) return ALL_ERRORED;
 
-        boolean hasAllow = false;
-        boolean hasDeny = false;
-        boolean monotonic = true;
-        boolean seenAllow = false;
-
-        for (RbacCellResult c : cells) {
-            if (c.isError()) continue;
-            if (c.is2xx()) {
-                hasAllow = true;
-                seenAllow = true;
-            } else {
-                hasDeny = true;
-                if (seenAllow) monotonic = false;
+        // Map each non-error cell to a depth value; skip cells that errored.
+        int[] depths = new int[cells.size()];
+        int validCount = 0;
+        for (int i = 0; i < cells.size(); i++) {
+            RbacCellResult c = cells.get(i);
+            if (c.isError()) {
+                depths[i] = Integer.MIN_VALUE;
+                continue;
             }
+            depths[i] = depthOf(c);
+            validCount++;
+        }
+        if (validCount == 0) return ALL_ERRORED;
+
+        // "All same depth" means all identities had the same stack outcome.
+        int first = firstValidDepth(depths);
+        boolean allSame = true;
+        for (int d : depths) {
+            if (d == Integer.MIN_VALUE) continue;
+            if (d != first) { allSame = false; break; }
+        }
+        if (allSame) {
+            return first == 2 ? CONSISTENT_ALLOW : CONSISTENT_DENY;
         }
 
-        if (hasAllow && !hasDeny) return CONSISTENT_ALLOW;
-        if (!hasAllow && hasDeny) return CONSISTENT_DENY;
-        return monotonic ? TIERED : DIVERGENT;
+        // Not all the same — walk left to right, confirming monotonic non-decreasing depth.
+        int previous = Integer.MIN_VALUE;
+        for (int d : depths) {
+            if (d == Integer.MIN_VALUE) continue;
+            if (previous != Integer.MIN_VALUE && d < previous) {
+                return DIVERGENT;
+            }
+            previous = d;
+        }
+        return TIERED;
+    }
+
+    private static int firstValidDepth(int[] depths) {
+        for (int d : depths) {
+            if (d != Integer.MIN_VALUE) return d;
+        }
+        return 0;
+    }
+
+    private static int depthOf(RbacCellResult c) {
+        if (c.is2xx() || c.is3xx()) return 2;
+        if (c.isNotFound()) return 1;
+        return 0;
     }
 }

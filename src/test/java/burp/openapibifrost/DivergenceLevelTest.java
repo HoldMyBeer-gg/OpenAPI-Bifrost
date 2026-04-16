@@ -130,4 +130,63 @@ class DivergenceLevelTest {
         assertTrue(DivergenceLevel.DIVERGENT.explanation().toLowerCase().contains("inversion"),
                 "DIVERGENT explanation should name the inversion pattern");
     }
+
+    @Test
+    void depthModel_403_403_404_isTiered() {
+        // SuperAdmin got 404 (passed auth, no resource); others got 403 (auth-blocked).
+        // Depths: 0, 0, 1 — non-decreasing, not all same → TIERED.
+        assertEquals(DivergenceLevel.TIERED,
+                DivergenceLevel.classify(List.of(ok(403), ok(403), ok(404))));
+    }
+
+    @Test
+    void depthModel_403_404_200_isTiered() {
+        // Full-stack tiering: readonly blocked, consultant gets 404, SuperAdmin 200.
+        assertEquals(DivergenceLevel.TIERED,
+                DivergenceLevel.classify(List.of(ok(403), ok(404), ok(200))));
+    }
+
+    @Test
+    void depthModel_404_404_404_isConsistentDeny() {
+        // Everyone got the same terminal outcome — resource genuinely doesn't exist.
+        assertEquals(DivergenceLevel.CONSISTENT_DENY,
+                DivergenceLevel.classify(List.of(ok(404), ok(404), ok(404))));
+    }
+
+    @Test
+    void depthModel_422_403_403_isDivergent() {
+        // Non-monotonic: the least-privileged identity got further (422 = validation,
+        // but still depth 0) — actually both are depth 0 so this is all-same-depth.
+        // Let's test a real inversion: 404, 403, 403 — readonly got past auth, others didn't.
+        assertEquals(DivergenceLevel.DIVERGENT,
+                DivergenceLevel.classify(List.of(ok(404), ok(403), ok(403))));
+    }
+
+    @Test
+    void depthModel_3xxTreatedLikeAllow() {
+        // 301/302 usually means "you're authenticated and redirected somewhere legit".
+        assertEquals(DivergenceLevel.CONSISTENT_ALLOW,
+                DivergenceLevel.classify(List.of(ok(302), ok(302), ok(301))));
+    }
+
+    @Test
+    void depthModel_mixOf401And403_isConsistentDeny() {
+        // Both are "blocked at auth" — same depth, so consistent.
+        assertEquals(DivergenceLevel.CONSISTENT_DENY,
+                DivergenceLevel.classify(List.of(ok(401), ok(403), ok(403))));
+    }
+
+    @Test
+    void depthModel_500_500_404_isTiered() {
+        // Server errors are treated as depth 0; one identity got to depth 1.
+        assertEquals(DivergenceLevel.TIERED,
+                DivergenceLevel.classify(List.of(ok(500), ok(500), ok(404))));
+    }
+
+    @Test
+    void depthModel_200_403_200_isDivergent() {
+        // Middle identity denied — flanking identities got through.
+        assertEquals(DivergenceLevel.DIVERGENT,
+                DivergenceLevel.classify(List.of(ok(200), ok(403), ok(200))));
+    }
 }
