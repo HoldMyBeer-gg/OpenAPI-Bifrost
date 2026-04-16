@@ -3,14 +3,18 @@ package burp.openapibifrost;
 import burp.api.montoya.MontoyaApi;
 import burp.api.montoya.http.message.HttpRequestResponse;
 
+import javax.swing.BoxLayout;
 import javax.swing.JButton;
 import javax.swing.JDialog;
+import javax.swing.JFileChooser;
 import javax.swing.JLabel;
 import javax.swing.JMenuItem;
+import javax.swing.JOptionPane;
 import javax.swing.JPanel;
 import javax.swing.JPopupMenu;
 import javax.swing.JScrollPane;
 import javax.swing.JTable;
+import javax.swing.JTextArea;
 import javax.swing.SwingUtilities;
 import javax.swing.WindowConstants;
 import javax.swing.border.EmptyBorder;
@@ -21,11 +25,16 @@ import java.awt.Color;
 import java.awt.Component;
 import java.awt.Dimension;
 import java.awt.FlowLayout;
+import java.awt.Font;
 import java.awt.Frame;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 import java.awt.event.WindowAdapter;
 import java.awt.event.WindowEvent;
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.List;
 
 /**
@@ -46,6 +55,8 @@ public class RbacComparisonDialog extends JDialog {
     private JLabel progressLabel;
     private JLabel histogramLabel;
     private JButton cancelButton;
+    private AccessRuleSet rules = AccessRuleSet.empty();
+    private String rulesText = "";
     private final long startedAt = System.currentTimeMillis();
 
     public RbacComparisonDialog(Frame owner, MontoyaApi api,
@@ -81,9 +92,20 @@ public class RbacComparisonDialog extends JDialog {
         leftStatus.add(histogramLabel);
         top.add(leftStatus, BorderLayout.WEST);
 
+        JPanel rightButtons = new JPanel(new FlowLayout(FlowLayout.RIGHT, 5, 0));
+        JButton rulesButton = new JButton("Rules...");
+        rulesButton.setToolTipText("Declare tag → allowed-identity expectations to flag access violations.");
+        rulesButton.addActionListener(e -> openRulesDialog());
+        rightButtons.add(rulesButton);
+
+        JButton exportButton = new JButton("Export CSV...");
+        exportButton.addActionListener(e -> exportCsv());
+        rightButtons.add(exportButton);
+
         cancelButton = new JButton("Cancel");
         cancelButton.addActionListener(e -> runner.cancel());
-        top.add(cancelButton, BorderLayout.EAST);
+        rightButtons.add(cancelButton);
+        top.add(rightButtons, BorderLayout.EAST);
         add(top, BorderLayout.NORTH);
 
         table = new JTable(model);
@@ -265,5 +287,47 @@ public class RbacComparisonDialog extends JDialog {
     /** Makes the CellRenderer inner class visible to subclasses for future skinning. */
     protected TableCellRenderer createCellRenderer() {
         return new CellRenderer();
+    }
+
+    private void openRulesDialog() {
+        JPanel panel = new JPanel();
+        panel.setLayout(new BoxLayout(panel, BoxLayout.Y_AXIS));
+        panel.add(new JLabel("One rule per line:  tag-pattern -> allowed-identity-pattern[,pattern...]"));
+        panel.add(new JLabel("Globs: * matches anything, ? one char. Lines starting with # are comments."));
+        panel.add(new JLabel("Example:  Admin -> admin*     Public -> *"));
+        JTextArea area = new JTextArea(rulesText, 10, 60);
+        area.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 12));
+        panel.add(new JScrollPane(area));
+
+        int choice = JOptionPane.showConfirmDialog(this, panel,
+                "Access expectation rules", JOptionPane.OK_CANCEL_OPTION, JOptionPane.PLAIN_MESSAGE);
+        if (choice != JOptionPane.OK_OPTION) return;
+        rulesText = area.getText();
+        rules = AccessRuleSet.parse(rulesText);
+        refreshHeader();
+        table.repaint();
+    }
+
+    private void exportCsv() {
+        JFileChooser chooser = new JFileChooser();
+        chooser.setSelectedFile(new java.io.File("openapi-bifrost-rbac.csv"));
+        if (chooser.showSaveDialog(this) != JFileChooser.APPROVE_OPTION) return;
+        Path target = chooser.getSelectedFile().toPath();
+        try {
+            String csv = CsvWriter.fromMatrix(model, rules);
+            Files.writeString(target, csv, StandardCharsets.UTF_8);
+            JOptionPane.showMessageDialog(this,
+                    "Exported " + model.getRowCount() + " rows to " + target.toString(),
+                    "Export complete", JOptionPane.INFORMATION_MESSAGE);
+        } catch (IOException ex) {
+            JOptionPane.showMessageDialog(this,
+                    "Failed to write CSV: " + ex.getMessage(),
+                    "Export failed", JOptionPane.ERROR_MESSAGE);
+        }
+    }
+
+    /** Exposes the current rule set to tests (package-private). */
+    AccessRuleSet currentRules() {
+        return rules;
     }
 }
