@@ -51,6 +51,12 @@ public class OpenAPIBifrostTab extends JPanel {
     private JTextField urlOrPathField;
     private JTextArea rawSpecArea;
     private JTextField baseUrlOverrideField;
+    private JTextField bearerField;
+    private JTextField apiKeyValueField;
+    private JTextField apiKeyNameField;
+    private JComboBox<AuthConfig.ApiKeyLocation> apiKeyLocationCombo;
+    private JTextField basicUserField;
+    private JPasswordField basicPassField;
     private JTextField filterField;
     private JLabel filterHitsLabel;
     private JTable endpointTable;
@@ -116,6 +122,8 @@ public class OpenAPIBifrostTab extends JPanel {
         baseUrlOverrideField.setToolTipText("Override server URL from spec (e.g. https://api.target.com)");
         overrideRow.add(baseUrlOverrideField);
         southPanel.add(overrideRow);
+
+        southPanel.add(buildAuthPanel());
 
         JPanel pastePanel = new JPanel(new BorderLayout(5, 5));
         pastePanel.add(new JLabel("Or paste raw OpenAPI spec (JSON/YAML):"), BorderLayout.NORTH);
@@ -370,7 +378,7 @@ public class OpenAPIBifrostTab extends JPanel {
         if (row >= 0) {
             ApiEndpoint ep = tableModel.getEndpointAt(row);
             if (ep != null) {
-                HttpRequest req = requestGenerator.buildRequest(ep, getBaseUrlOverride());
+                HttpRequest req = requestGenerator.buildRequest(ep, getBaseUrlOverride(), getAuthConfig());
                 requestEditor.setRequest(req);
             }
         } else {
@@ -381,6 +389,61 @@ public class OpenAPIBifrostTab extends JPanel {
     private String getBaseUrlOverride() {
         String s = baseUrlOverrideField.getText();
         return (s != null && !s.isBlank()) ? s.trim() : null;
+    }
+
+    private JPanel buildAuthPanel() {
+        JPanel panel = new JPanel();
+        panel.setLayout(new BoxLayout(panel, BoxLayout.Y_AXIS));
+        panel.setBorder(BorderFactory.createTitledBorder("Authentication (applied to all generated requests)"));
+
+        JPanel bearerRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 5, 2));
+        bearerRow.add(new JLabel("Bearer token:"));
+        bearerField = new JTextField(45);
+        bearerField.setToolTipText("Whitespace/newlines stripped automatically. Sent as 'Authorization: Bearer <token>'.");
+        bearerRow.add(bearerField);
+        panel.add(bearerRow);
+
+        JPanel apiKeyRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 5, 2));
+        apiKeyRow.add(new JLabel("API key:"));
+        apiKeyValueField = new JTextField(20);
+        apiKeyRow.add(apiKeyValueField);
+        apiKeyRow.add(new JLabel("name:"));
+        apiKeyNameField = new JTextField("X-API-Key", 15);
+        apiKeyRow.add(apiKeyNameField);
+        apiKeyRow.add(new JLabel("in:"));
+        apiKeyLocationCombo = new JComboBox<>(AuthConfig.ApiKeyLocation.values());
+        apiKeyRow.add(apiKeyLocationCombo);
+        panel.add(apiKeyRow);
+
+        JPanel basicRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 5, 2));
+        basicRow.add(new JLabel("Basic auth — user:"));
+        basicUserField = new JTextField(15);
+        basicRow.add(basicUserField);
+        basicRow.add(new JLabel("pass:"));
+        basicPassField = new JPasswordField(15);
+        basicRow.add(basicPassField);
+        panel.add(basicRow);
+
+        ActionListener refreshPreview = e -> updateRequestPreview();
+        bearerField.addActionListener(refreshPreview);
+        apiKeyValueField.addActionListener(refreshPreview);
+        apiKeyNameField.addActionListener(refreshPreview);
+        apiKeyLocationCombo.addActionListener(refreshPreview);
+        basicUserField.addActionListener(refreshPreview);
+        basicPassField.addActionListener(refreshPreview);
+
+        return panel;
+    }
+
+    private AuthConfig getAuthConfig() {
+        return new AuthConfig(
+                bearerField.getText(),
+                apiKeyValueField.getText(),
+                apiKeyNameField.getText(),
+                (AuthConfig.ApiKeyLocation) apiKeyLocationCombo.getSelectedItem(),
+                basicUserField.getText(),
+                new String(basicPassField.getPassword())
+        );
     }
 
     private void setupContextMenu() {
@@ -446,9 +509,10 @@ public class OpenAPIBifrostTab extends JPanel {
         }
         List<ApiEndpoint> endpoints = tableModel.getSelectedEndpoints(rows);
         String override = getBaseUrlOverride();
+        AuthConfig auth = getAuthConfig();
         try {
             for (ApiEndpoint ep : endpoints) {
-                HttpRequest req = requestGenerator.buildRequest(ep, override);
+                HttpRequest req = requestGenerator.buildRequest(ep, override, auth);
                 api.scanner()
                         .startAudit(AuditConfiguration.auditConfiguration(BuiltInAuditConfiguration.LEGACY_ACTIVE_AUDIT_CHECKS))
                         .addRequest(req);
@@ -468,9 +532,10 @@ public class OpenAPIBifrostTab extends JPanel {
         }
         List<ApiEndpoint> endpoints = tableModel.getSelectedEndpoints(rows);
         String override = getBaseUrlOverride();
+        AuthConfig auth = getAuthConfig();
         try {
             for (ApiEndpoint ep : endpoints) {
-                HttpRequest req = requestGenerator.buildRequest(ep, override);
+                HttpRequest req = requestGenerator.buildRequest(ep, override, auth);
                 String tabName = ep.getMethod() + " " + ep.getPath();
                 if (tabName.length() > 50) tabName = tabName.substring(0, 47) + "...";
                 api.repeater().sendToRepeater(req, tabName);
@@ -490,10 +555,11 @@ public class OpenAPIBifrostTab extends JPanel {
         }
         List<ApiEndpoint> endpoints = tableModel.getSelectedEndpoints(rows);
         String override = getBaseUrlOverride();
+        AuthConfig auth = getAuthConfig();
         try {
             for (ApiEndpoint ep : endpoints) {
-                HttpRequest req = requestGenerator.buildRequest(ep, override);
-                HttpRequestTemplate template = requestGenerator.buildIntruderTemplate(ep, override);
+                HttpRequest req = requestGenerator.buildRequest(ep, override, auth);
+                HttpRequestTemplate template = requestGenerator.buildIntruderTemplate(ep, override, auth);
                 String tabName = ep.getMethod() + " " + ep.getPath();
                 if (tabName.length() > 70) tabName = tabName.substring(0, 67) + "...";
                 api.intruder().sendToIntruder(req.httpService(), template, tabName);

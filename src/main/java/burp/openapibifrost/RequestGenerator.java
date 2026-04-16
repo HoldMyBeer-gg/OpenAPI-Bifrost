@@ -7,14 +7,15 @@ import burp.api.montoya.intruder.HttpRequestTemplateGenerationOptions;
 
 import java.net.URI;
 import java.net.URISyntaxException;
+import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.regex.Pattern;
 
 /**
  * Builds {@link HttpRequest} and {@link HttpRequestTemplate} from {@link ApiEndpoint}s.
- * Handles path/query param substitution, insertion point ranges for Scanner, and
- * Intruder templates with auto-marked insertion points.
+ * Handles path/query param substitution, optional auth injection, and Intruder templates
+ * with auto-marked insertion points.
  *
  * @author jabberwock
  * @since 1.0
@@ -25,21 +26,17 @@ public class RequestGenerator {
     private static final String PATH_PARAM_PLACEHOLDER = "1";
     private static final String BODY_PLACEHOLDER = "{}";
 
-    /**
-     * Builds raw HTTP request bytes for the given endpoint. Uses UTF-8 encoding.
-     * Intended for testing. Does not sanitize content; payloads may include security-test
-     * data (e.g. SQLi, XSS).
-     *
-     * @param endpoint the endpoint to build a request for
-     * @param baseUrlOverride optional base URL to use instead of the endpoint's server
-     * @return raw HTTP request bytes
-     */
     public byte[] buildRequestBytes(ApiEndpoint endpoint, String baseUrlOverride) {
-        String requestStr = buildRequestString(endpoint, baseUrlOverride);
-        return requestStr.getBytes(StandardCharsets.UTF_8);
+        return buildRequestBytes(endpoint, baseUrlOverride, AuthConfig.empty());
     }
 
-    private String buildRequestString(ApiEndpoint endpoint, String baseUrlOverride) {
+    public byte[] buildRequestBytes(ApiEndpoint endpoint, String baseUrlOverride, AuthConfig auth) {
+        return buildRequestString(endpoint, baseUrlOverride, auth).getBytes(StandardCharsets.UTF_8);
+    }
+
+    private String buildRequestString(ApiEndpoint endpoint, String baseUrlOverride, AuthConfig auth) {
+        if (auth == null) auth = AuthConfig.empty();
+
         String server = (baseUrlOverride != null && !baseUrlOverride.isBlank())
                 ? baseUrlOverride
                 : endpoint.getServer();
@@ -55,6 +52,10 @@ public class RequestGenerator {
                 if (query.length() > 0) query.append("&");
                 query.append(p.getName()).append("=").append(p.getPlaceholderValue());
             }
+        }
+        if (auth.hasApiKey() && auth.apiKeyLocation() == AuthConfig.ApiKeyLocation.QUERY) {
+            if (query.length() > 0) query.append("&");
+            query.append(urlEncode(auth.apiKeyName())).append("=").append(urlEncode(auth.apiKeyValue()));
         }
         String pathWithQuery = path + (query.length() > 0 ? "?" + query : "");
 
@@ -79,6 +80,7 @@ public class RequestGenerator {
             request.append("Host: localhost\r\n");
         }
         request.append("User-Agent: OpenAPI-Bifrost/1.0\r\n");
+        appendAuthHeaders(request, auth);
         if (hasBody) {
             int bodyLength = BODY_PLACEHOLDER.getBytes(StandardCharsets.UTF_8).length;
             request.append("Content-Type: application/json\r\n");
@@ -93,14 +95,37 @@ public class RequestGenerator {
     }
 
     /**
-     * Builds a Montoya {@link HttpRequest} for the given endpoint.
-     *
-     * @param endpoint the endpoint to build a request for
-     * @param baseUrlOverride optional base URL; if null/blank, uses endpoint server
-     * @return the constructed HttpRequest
+     * Appends auth headers. Bearer/Basic take precedence if both set (Basic wins last-write).
+     * API key header/cookie live on their own line; query keys are handled in the query string.
      */
+    private void appendAuthHeaders(StringBuilder request, AuthConfig auth) {
+        if (auth.hasBearer()) {
+            request.append("Authorization: Bearer ").append(auth.bearerToken()).append("\r\n");
+        }
+        if (auth.hasBasic()) {
+            request.append("Authorization: ").append(auth.basicAuthorizationHeaderValue()).append("\r\n");
+        }
+        if (auth.hasApiKey()) {
+            switch (auth.apiKeyLocation()) {
+                case HEADER:
+                    request.append(auth.apiKeyName()).append(": ").append(auth.apiKeyValue()).append("\r\n");
+                    break;
+                case COOKIE:
+                    request.append("Cookie: ").append(auth.apiKeyName()).append("=").append(auth.apiKeyValue()).append("\r\n");
+                    break;
+                case QUERY:
+                    // Already applied to query string.
+                    break;
+            }
+        }
+    }
+
     public HttpRequest buildRequest(ApiEndpoint endpoint, String baseUrlOverride) {
-        String requestStr = buildRequestString(endpoint, baseUrlOverride);
+        return buildRequest(endpoint, baseUrlOverride, AuthConfig.empty());
+    }
+
+    public HttpRequest buildRequest(ApiEndpoint endpoint, String baseUrlOverride, AuthConfig auth) {
+        String requestStr = buildRequestString(endpoint, baseUrlOverride, auth);
         String server = (baseUrlOverride != null && !baseUrlOverride.isBlank())
                 ? baseUrlOverride
                 : (endpoint.getServer() != null && !endpoint.getServer().isEmpty() ? endpoint.getServer() : "https://localhost");
@@ -108,16 +133,12 @@ public class RequestGenerator {
         return HttpRequest.httpRequest(HttpService.httpService(server), requestStr);
     }
 
-    /**
-     * Builds an Intruder template with insertion points auto-marked at URL, cookie,
-     * and body parameter values using {@code REPLACE_BASE_PARAMETER_VALUE_WITH_OFFSETS}.
-     *
-     * @param endpoint the endpoint to build a template for
-     * @param baseUrlOverride optional base URL override
-     * @return the HttpRequestTemplate ready for Intruder
-     */
     public HttpRequestTemplate buildIntruderTemplate(ApiEndpoint endpoint, String baseUrlOverride) {
-        HttpRequest request = buildRequest(endpoint, baseUrlOverride);
+        return buildIntruderTemplate(endpoint, baseUrlOverride, AuthConfig.empty());
+    }
+
+    public HttpRequestTemplate buildIntruderTemplate(ApiEndpoint endpoint, String baseUrlOverride, AuthConfig auth) {
+        HttpRequest request = buildRequest(endpoint, baseUrlOverride, auth);
         return HttpRequestTemplate.httpRequestTemplate(
                 request,
                 HttpRequestTemplateGenerationOptions.REPLACE_BASE_PARAMETER_VALUE_WITH_OFFSETS
@@ -133,8 +154,11 @@ public class RequestGenerator {
                 result = result.replace("{" + p.getName() + "}", placeholder);
             }
         }
-        // Replace any remaining {param} with 1
         result = Pattern.compile("\\{[^}]+\\}").matcher(result).replaceAll(PATH_PARAM_PLACEHOLDER);
         return result;
+    }
+
+    private static String urlEncode(String s) {
+        return URLEncoder.encode(s, StandardCharsets.UTF_8);
     }
 }

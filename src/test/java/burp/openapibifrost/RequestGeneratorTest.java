@@ -133,4 +133,79 @@ class RequestGeneratorTest {
         assertTrue(req.contains("GET /users HTTP/1.1"));
         assertFalse(req.contains("//users"));
     }
+
+    @Test
+    void buildRequestBytes_bearerTokenInjected() {
+        var ep = new ApiEndpoint(1, "https", "GET", "https://api.test.com", "/users", List.of(), "");
+        AuthConfig auth = new AuthConfig("eyJtoken", null, null, null, null, null);
+        String req = new String(generator.buildRequestBytes(ep, null, auth), StandardCharsets.UTF_8);
+        assertTrue(req.contains("Authorization: Bearer eyJtoken\r\n"));
+    }
+
+    @Test
+    void buildRequestBytes_bearerTokenWhitespaceStripped() {
+        var ep = new ApiEndpoint(1, "https", "GET", "https://api.test.com", "/users", List.of(), "");
+        AuthConfig auth = new AuthConfig("eyJ\nabc.def\r\n ghi", null, null, null, null, null);
+        String req = new String(generator.buildRequestBytes(ep, null, auth), StandardCharsets.UTF_8);
+        assertTrue(req.contains("Authorization: Bearer eyJabc.defghi\r\n"));
+    }
+
+    @Test
+    void buildRequestBytes_apiKeyAsHeader() {
+        var ep = new ApiEndpoint(1, "https", "GET", "https://api.test.com", "/users", List.of(), "");
+        AuthConfig auth = new AuthConfig(null, "abc123", "X-API-Key", AuthConfig.ApiKeyLocation.HEADER, null, null);
+        String req = new String(generator.buildRequestBytes(ep, null, auth), StandardCharsets.UTF_8);
+        assertTrue(req.contains("X-API-Key: abc123\r\n"));
+    }
+
+    @Test
+    void buildRequestBytes_apiKeyAsQuery_urlEncoded() {
+        var ep = new ApiEndpoint(1, "https", "GET", "https://api.test.com", "/users", List.of(), "");
+        AuthConfig auth = new AuthConfig(null, "abc 123+x", "api key", AuthConfig.ApiKeyLocation.QUERY, null, null);
+        String req = new String(generator.buildRequestBytes(ep, null, auth), StandardCharsets.UTF_8);
+        assertTrue(req.contains("/users?api+key=abc+123%2Bx"));
+    }
+
+    @Test
+    void buildRequestBytes_apiKeyAsQuery_appendsToExistingQuery() {
+        var params = List.of(new ApiEndpoint.ParameterInfo("limit", "query", "10"));
+        var ep = new ApiEndpoint(1, "https", "GET", "https://api.test.com", "/users", params, "");
+        AuthConfig auth = new AuthConfig(null, "secret", "key", AuthConfig.ApiKeyLocation.QUERY, null, null);
+        String req = new String(generator.buildRequestBytes(ep, null, auth), StandardCharsets.UTF_8);
+        assertTrue(req.contains("/users?limit=10&key=secret"));
+    }
+
+    @Test
+    void buildRequestBytes_apiKeyAsCookie() {
+        var ep = new ApiEndpoint(1, "https", "GET", "https://api.test.com", "/users", List.of(), "");
+        AuthConfig auth = new AuthConfig(null, "sessval", "sid", AuthConfig.ApiKeyLocation.COOKIE, null, null);
+        String req = new String(generator.buildRequestBytes(ep, null, auth), StandardCharsets.UTF_8);
+        assertTrue(req.contains("Cookie: sid=sessval\r\n"));
+    }
+
+    @Test
+    void buildRequestBytes_basicAuthInjected() {
+        var ep = new ApiEndpoint(1, "https", "GET", "https://api.test.com", "/users", List.of(), "");
+        AuthConfig auth = new AuthConfig(null, null, null, null, "admin", "hunter2");
+        String req = new String(generator.buildRequestBytes(ep, null, auth), StandardCharsets.UTF_8);
+        String expected = "Authorization: Basic " +
+                java.util.Base64.getEncoder().encodeToString("admin:hunter2".getBytes(StandardCharsets.UTF_8));
+        assertTrue(req.contains(expected + "\r\n"));
+    }
+
+    @Test
+    void buildRequestBytes_emptyAuth_addsNoAuthHeaders() {
+        var ep = new ApiEndpoint(1, "https", "GET", "https://api.test.com", "/users", List.of(), "");
+        String req = new String(generator.buildRequestBytes(ep, null, AuthConfig.empty()), StandardCharsets.UTF_8);
+        assertFalse(req.contains("Authorization:"));
+        assertFalse(req.contains("Cookie:"));
+        assertFalse(req.contains("X-API-Key:"));
+    }
+
+    @Test
+    void buildRequestBytes_nullAuth_addsNoAuthHeaders() {
+        var ep = new ApiEndpoint(1, "https", "GET", "https://api.test.com", "/users", List.of(), "");
+        String req = new String(generator.buildRequestBytes(ep, null, null), StandardCharsets.UTF_8);
+        assertFalse(req.contains("Authorization:"));
+    }
 }
