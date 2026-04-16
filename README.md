@@ -10,7 +10,7 @@ Offers a different feature set to the existing OpenAPI Parser extension — not 
 
 Pick any subset of endpoints, right-click, and **Compare across identities** fires each request under each named identity you've configured. The resulting matrix highlights access patterns at a glance — coloured by status category, classified per-row by divergence (CONSISTENT ALLOW / CONSISTENT DENY / TIERED / DIVERGENT).
 
-![RBAC comparison grid showing 132 endpoints × 3 identities, 396/396 cells completed in 14 seconds](docs/screenshots/rbac-comparison.png)
+![RBAC comparison grid showing 150 endpoints × 4 identities, 600/600 cells completed in 19 seconds](docs/screenshots/rbac-comparison.png)
 
 TIERED (green) is healthy role separation — lower-privilege identities denied, higher ones allowed. DIVERGENT (red) flags the anomalies: a regular user getting 2xx where an admin-only endpoint should deny.
 
