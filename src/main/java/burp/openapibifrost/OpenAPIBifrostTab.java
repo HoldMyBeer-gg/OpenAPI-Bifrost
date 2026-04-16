@@ -10,6 +10,7 @@ import burp.api.montoya.intruder.HttpRequestTemplate;
 import burp.api.montoya.logging.Logging;
 import burp.api.montoya.scanner.AuditConfiguration;
 import burp.api.montoya.scanner.BuiltInAuditConfiguration;
+import burp.api.montoya.scanner.audit.Audit;
 import burp.api.montoya.ui.editor.HttpRequestEditor;
 
 import javax.swing.*;
@@ -186,6 +187,7 @@ public class OpenAPIBifrostTab extends JPanel {
         JSplitPane split = new JSplitPane(JSplitPane.VERTICAL_SPLIT);
         endpointTable = new JTable(tableModel);
         endpointTable.setSelectionMode(ListSelectionModel.MULTIPLE_INTERVAL_SELECTION);
+        endpointTable.setAutoCreateRowSorter(true);
         endpointTable.getSelectionModel().addListSelectionListener(e -> {
             if (!e.getValueIsAdjusting()) updateRequestPreview();
         });
@@ -420,9 +422,10 @@ public class OpenAPIBifrostTab extends JPanel {
     }
 
     private void updateRequestPreview() {
-        int row = endpointTable.getSelectedRow();
-        if (row >= 0) {
-            ApiEndpoint ep = tableModel.getEndpointAt(row);
+        int viewRow = endpointTable.getSelectedRow();
+        if (viewRow >= 0) {
+            int modelRow = endpointTable.convertRowIndexToModel(viewRow);
+            ApiEndpoint ep = tableModel.getEndpointAt(modelRow);
             if (ep != null) {
                 HttpRequest req = requestGenerator.buildRequest(ep, getBaseUrlOverride(), getAuthConfig());
                 requestEditor.setRequest(req);
@@ -430,6 +433,16 @@ public class OpenAPIBifrostTab extends JPanel {
         } else {
             requestEditor.setRequest(null);
         }
+    }
+
+    /** Returns selected rows translated from view indices (possibly sorted) to model indices. */
+    private int[] selectedModelRows() {
+        int[] viewRows = endpointTable.getSelectedRows();
+        int[] modelRows = new int[viewRows.length];
+        for (int i = 0; i < viewRows.length; i++) {
+            modelRows[i] = endpointTable.convertRowIndexToModel(viewRows[i]);
+        }
+        return modelRows;
     }
 
     private String getBaseUrlOverride() {
@@ -638,8 +651,11 @@ public class OpenAPIBifrostTab extends JPanel {
     }
 
     private void doActivelyScan() {
-        if (!hasScanner) return;
-        int[] rows = endpointTable.getSelectedRows();
+        if (!hasScanner) {
+            setStatus("Active Scan requires Burp Suite Professional.");
+            return;
+        }
+        int[] rows = selectedModelRows();
         if (rows.length == 0) {
             setStatus("Select one or more endpoints to scan.");
             return;
@@ -648,21 +664,27 @@ public class OpenAPIBifrostTab extends JPanel {
         String override = getBaseUrlOverride();
         AuthConfig auth = getAuthConfig();
         try {
+            Audit audit = api.scanner().startAudit(
+                    AuditConfiguration.auditConfiguration(BuiltInAuditConfiguration.LEGACY_ACTIVE_AUDIT_CHECKS));
+            int added = 0;
             for (ApiEndpoint ep : endpoints) {
                 HttpRequest req = requestGenerator.buildRequest(ep, override, auth);
-                api.scanner()
-                        .startAudit(AuditConfiguration.auditConfiguration(BuiltInAuditConfiguration.LEGACY_ACTIVE_AUDIT_CHECKS))
-                        .addRequest(req);
+                audit.addRequest(req);
+                added++;
             }
-            setStatus("Started active scan for " + endpoints.size() + " endpoints.");
+            logging.logToOutput("Started active scan with " + added + " endpoints. Check Scanner > Tasks.");
+            setStatus("Started active scan for " + added + " endpoints — see Scanner > Tasks.");
         } catch (Exception ex) {
             logging.logToError("Actively scan failed: " + ex.getMessage());
+            java.io.StringWriter sw = new java.io.StringWriter();
+            ex.printStackTrace(new java.io.PrintWriter(sw));
+            logging.logToError(sw.toString());
             setStatus("Scan failed: " + ex.getMessage());
         }
     }
 
     private void doSendToRepeater() {
-        int[] rows = endpointTable.getSelectedRows();
+        int[] rows = selectedModelRows();
         if (rows.length == 0) {
             setStatus("Select one or more endpoints to send to Repeater.");
             return;
@@ -685,7 +707,7 @@ public class OpenAPIBifrostTab extends JPanel {
     }
 
     private void doSendToIntruder() {
-        int[] rows = endpointTable.getSelectedRows();
+        int[] rows = selectedModelRows();
         if (rows.length == 0) {
             setStatus("Select one or more endpoints to send to Intruder.");
             return;

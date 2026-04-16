@@ -102,6 +102,11 @@ public class EndpointTableModel extends AbstractTableModel {
     }
 
     @Override
+    public Class<?> getColumnClass(int columnIndex) {
+        return columnIndex == COL_INDEX ? Integer.class : String.class;
+    }
+
+    @Override
     public Object getValueAt(int rowIndex, int columnIndex) {
         ApiEndpoint e = getEndpointAt(rowIndex);
         if (e == null) return "";
