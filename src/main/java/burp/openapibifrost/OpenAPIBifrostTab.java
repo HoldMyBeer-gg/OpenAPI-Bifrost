@@ -2,6 +2,7 @@ package burp.openapibifrost;
 
 import burp.api.montoya.MontoyaApi;
 import burp.api.montoya.core.BurpSuiteEdition;
+import burp.api.montoya.http.HttpService;
 import burp.api.montoya.http.message.HttpHeader;
 import burp.api.montoya.http.message.HttpRequestResponse;
 import burp.api.montoya.http.message.requests.HttpRequest;
@@ -565,6 +566,11 @@ public class OpenAPIBifrostTab extends JPanel {
         }
         extraHeadersArea.setText(extras.toString());
 
+        String baseUrl = deriveBaseUrl(req);
+        if (baseUrl != null) {
+            baseUrlOverrideField.setText(baseUrl);
+        }
+
         HttpResponse response = rr.response();
         if (response != null) {
             String body = response.bodyToString();
@@ -591,6 +597,20 @@ public class OpenAPIBifrostTab extends JPanel {
     private static String safeUrl(HttpRequest req) {
         try {
             return req.url();
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    /** Builds scheme://host[:port] from a request's HttpService, omitting default ports. */
+    private static String deriveBaseUrl(HttpRequest req) {
+        try {
+            HttpService svc = req.httpService();
+            if (svc == null) return null;
+            String scheme = svc.secure() ? "https" : "http";
+            int port = svc.port();
+            boolean defaultPort = (svc.secure() && port == 443) || (!svc.secure() && port == 80);
+            return scheme + "://" + svc.host() + (defaultPort ? "" : ":" + port);
         } catch (Exception e) {
             return null;
         }
@@ -664,16 +684,38 @@ public class OpenAPIBifrostTab extends JPanel {
         String override = getBaseUrlOverride();
         AuthConfig auth = getAuthConfig();
         try {
+            int outOfScope = 0;
+            String firstOutOfScopeUrl = null;
+            for (ApiEndpoint ep : endpoints) {
+                HttpRequest probe = requestGenerator.buildRequest(ep, override, auth);
+                if (!api.scope().isInScope(probe.url())) {
+                    outOfScope++;
+                    if (firstOutOfScopeUrl == null) firstOutOfScopeUrl = probe.url();
+                }
+            }
+            if (outOfScope == endpoints.size()) {
+                String msg = "All " + outOfScope + " endpoints are out of scope. Scanner silently drops "
+                        + "out-of-scope requests. Add target to scope (e.g. " + firstOutOfScopeUrl + ").";
+                logging.logToError(msg);
+                setStatus(msg);
+                return;
+            }
+            if (outOfScope > 0) {
+                logging.logToOutput(outOfScope + "/" + endpoints.size()
+                        + " endpoints out of scope — Scanner will skip those.");
+            }
+
             Audit audit = api.scanner().startAudit(
                     AuditConfiguration.auditConfiguration(BuiltInAuditConfiguration.LEGACY_ACTIVE_AUDIT_CHECKS));
+            logging.logToOutput("startAudit -> " + (audit != null ? audit.getClass().getSimpleName() : "null"));
             int added = 0;
             for (ApiEndpoint ep : endpoints) {
                 HttpRequest req = requestGenerator.buildRequest(ep, override, auth);
                 audit.addRequest(req);
                 added++;
             }
-            logging.logToOutput("Started active scan with " + added + " endpoints. Check Scanner > Tasks.");
-            setStatus("Started active scan for " + added + " endpoints — see Scanner > Tasks.");
+            logging.logToOutput("Added " + added + " requests. Audit status: " + audit.statusMessage());
+            setStatus("Audit started: " + added + " requests (" + outOfScope + " skipped as out of scope) — see Dashboard.");
         } catch (Exception ex) {
             logging.logToError("Actively scan failed: " + ex.getMessage());
             java.io.StringWriter sw = new java.io.StringWriter();
