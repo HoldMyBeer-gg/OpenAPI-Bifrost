@@ -2,7 +2,10 @@ package burp.openapibifrost;
 
 import burp.api.montoya.MontoyaApi;
 import burp.api.montoya.core.BurpSuiteEdition;
+import burp.api.montoya.http.message.HttpHeader;
+import burp.api.montoya.http.message.HttpRequestResponse;
 import burp.api.montoya.http.message.requests.HttpRequest;
+import burp.api.montoya.http.message.responses.HttpResponse;
 import burp.api.montoya.intruder.HttpRequestTemplate;
 import burp.api.montoya.logging.Logging;
 import burp.api.montoya.scanner.AuditConfiguration;
@@ -23,6 +26,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -508,6 +512,75 @@ public class OpenAPIBifrostTab extends JPanel {
                 new String(basicPassField.getPassword()),
                 AuthConfig.parseExtraHeaders(extraHeadersArea.getText())
         );
+    }
+
+    /**
+     * Populates the auth panel from a Burp HTTP request, and — when possible — auto-detects
+     * the OpenAPI spec source from the request's response body or URL path. Invoked from
+     * the "Send to OpenAPI-Bifrost" context menu. Runs on the EDT.
+     */
+    public void importFromRequest(HttpRequestResponse rr) {
+        SwingUtilities.invokeLater(() -> applyImport(rr));
+    }
+
+    private void applyImport(HttpRequestResponse rr) {
+        if (rr == null || rr.request() == null) {
+            setStatus("No request to import.");
+            return;
+        }
+        HttpRequest req = rr.request();
+        List<String> rawLines = new ArrayList<>();
+        for (HttpHeader h : req.headers()) {
+            rawLines.add(h.name() + ": " + h.value());
+        }
+        HeaderClassifier.Extracted ex = HeaderClassifier.fromRawHeaderLines(rawLines);
+
+        bearerField.setText(ex.bearerToken() != null ? ex.bearerToken() : "");
+        basicUserField.setText(ex.basicUser() != null ? ex.basicUser() : "");
+        basicPassField.setText(ex.basicPass() != null ? ex.basicPass() : "");
+        if (ex.apiKeyValue() != null) {
+            apiKeyNameField.setText(ex.apiKeyName());
+            apiKeyValueField.setText(ex.apiKeyValue());
+            apiKeyLocationCombo.setSelectedItem(AuthConfig.ApiKeyLocation.HEADER);
+        } else {
+            apiKeyValueField.setText("");
+        }
+        StringBuilder extras = new StringBuilder();
+        for (AuthConfig.HeaderPair h : ex.extraHeaders()) {
+            if (extras.length() > 0) extras.append("\n");
+            extras.append(h.name()).append(": ").append(h.value());
+        }
+        extraHeadersArea.setText(extras.toString());
+
+        HttpResponse response = rr.response();
+        if (response != null) {
+            String body = response.bodyToString();
+            if (HeaderClassifier.looksLikeSpecBody(body)) {
+                rawSpecArea.setText(body);
+                setStatus("Imported auth + detected OpenAPI spec in response body — click Parse.");
+                updateRequestPreview();
+                return;
+            }
+        }
+
+        String fullUrl = safeUrl(req);
+        if (HeaderClassifier.isSpecUrlPath(req.path()) && fullUrl != null) {
+            urlOrPathField.setText(fullUrl);
+            setStatus("Imported auth + spec URL — click Load.");
+            updateRequestPreview();
+            return;
+        }
+
+        setStatus("Imported auth from request. Load a spec URL or paste a spec to continue.");
+        updateRequestPreview();
+    }
+
+    private static String safeUrl(HttpRequest req) {
+        try {
+            return req.url();
+        } catch (Exception e) {
+            return null;
+        }
     }
 
     private void setupContextMenu() {

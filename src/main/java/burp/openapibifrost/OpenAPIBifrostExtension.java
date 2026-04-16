@@ -23,6 +23,7 @@ public class OpenAPIBifrostExtension implements BurpExtension {
         OpenAPIBifrostTab tab = new OpenAPIBifrostTab(api);
         api.userInterface().applyThemeToComponent(tab);
         api.userInterface().registerSuiteTab("OpenAPI-Bifrost", tab);
+        api.userInterface().registerContextMenuItemsProvider(new BifrostContextMenuProvider(tab));
 
         api.extension().registerUnloadingHandler(tab::unload);
 
