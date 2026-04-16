@@ -1267,32 +1267,112 @@ public class OpenAPIBifrostTab extends JPanel {
         return sb.toString();
     }
 
-    /** Puts a checkbox next to every identity name; returns those the user enabled, in priority order. */
+    /**
+     * Shows a reorderable checkbox list of identities and returns the user's picks in
+     * the order they appear top-to-bottom. The classifier treats list index 0 as the
+     * least-privileged identity and the last index as the most-privileged — so the
+     * dialog is explicit: "Least privileged at top, most privileged at bottom."
+     */
     private List<Identity> pickIdentitiesForCompare() {
         List<Identity> all = identityStore.identities();
+
+        DefaultListModel<IdentityChoice> listModel = new DefaultListModel<>();
+        for (Identity id : all) listModel.addElement(new IdentityChoice(id, true));
+        JList<IdentityChoice> list = new JList<>(listModel);
+        list.setCellRenderer(new IdentityChoiceRenderer());
+        list.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
+        list.setSelectedIndex(0);
+        list.setVisibleRowCount(Math.min(listModel.getSize() + 1, 8));
+
+        // Click-to-toggle the included flag; double-click doesn't reorder (use buttons).
+        list.addMouseListener(new MouseAdapter() {
+            @Override public void mouseClicked(MouseEvent e) {
+                int idx = list.locationToIndex(e.getPoint());
+                if (idx < 0) return;
+                IdentityChoice choice = listModel.get(idx);
+                choice.included = !choice.included;
+                listModel.set(idx, choice);
+            }
+        });
+
+        JButton upBtn = new JButton("↑ Move up");
+        upBtn.addActionListener(e -> moveSelected(list, listModel, -1));
+        JButton downBtn = new JButton("↓ Move down");
+        downBtn.addActionListener(e -> moveSelected(list, listModel, +1));
+
+        JPanel buttonCol = new JPanel();
+        buttonCol.setLayout(new BoxLayout(buttonCol, BoxLayout.Y_AXIS));
+        buttonCol.add(upBtn);
+        buttonCol.add(Box.createVerticalStrut(4));
+        buttonCol.add(downBtn);
+        buttonCol.add(Box.createVerticalGlue());
+
+        JPanel listAndButtons = new JPanel(new BorderLayout(8, 0));
+        listAndButtons.add(new JScrollPane(list), BorderLayout.CENTER);
+        listAndButtons.add(buttonCol, BorderLayout.EAST);
+
         JPanel panel = new JPanel();
         panel.setLayout(new BoxLayout(panel, BoxLayout.Y_AXIS));
-        panel.add(new JLabel("Run each selected endpoint with each ticked identity. Order (top→bottom) is priority ascending."));
+        JLabel header = new JLabel("Run each selected endpoint with each ticked identity.");
+        JLabel orderHint = new JLabel("Order top → bottom is priority ascending:  put LEAST-privileged at top, MOST-privileged at bottom.");
+        orderHint.setForeground(UIManager.getColor("Label.disabledForeground"));
+        JLabel clickHint = new JLabel("Click a row to toggle its checkbox. Use Move up/down to reorder.");
+        clickHint.setForeground(UIManager.getColor("Label.disabledForeground"));
+        panel.add(header);
+        panel.add(Box.createVerticalStrut(2));
+        panel.add(orderHint);
+        panel.add(clickHint);
         panel.add(Box.createVerticalStrut(6));
-        List<JCheckBox> boxes = new ArrayList<>();
-        for (Identity id : all) {
-            JCheckBox cb = new JCheckBox(id.name(), true);
-            boxes.add(cb);
-            panel.add(cb);
-        }
+        panel.add(listAndButtons);
+
         int choice = JOptionPane.showConfirmDialog(this, panel,
                 "Compare identities", JOptionPane.OK_CANCEL_OPTION, JOptionPane.PLAIN_MESSAGE);
         if (choice != JOptionPane.OK_OPTION) return null;
+
         List<Identity> picked = new ArrayList<>();
-        for (int i = 0; i < all.size(); i++) {
-            if (boxes.get(i).isSelected()) picked.add(all.get(i));
+        for (int i = 0; i < listModel.getSize(); i++) {
+            IdentityChoice c = listModel.get(i);
+            if (c.included) picked.add(c.identity);
         }
         if (picked.size() < 2) {
-            JOptionPane.showMessageDialog(this, "Pick at least two identities to compare.",
+            JOptionPane.showMessageDialog(this, "Tick at least two identities to compare.",
                     "Too few identities", JOptionPane.WARNING_MESSAGE);
             return null;
         }
         return picked;
+    }
+
+    private static void moveSelected(JList<IdentityChoice> list, DefaultListModel<IdentityChoice> model, int direction) {
+        int idx = list.getSelectedIndex();
+        if (idx < 0) return;
+        int newIdx = idx + direction;
+        if (newIdx < 0 || newIdx >= model.getSize()) return;
+        IdentityChoice moving = model.remove(idx);
+        model.add(newIdx, moving);
+        list.setSelectedIndex(newIdx);
+    }
+
+    /** Mutable row type for the identity picker list — bundles the identity with a user-toggled include flag. */
+    private static final class IdentityChoice {
+        final Identity identity;
+        boolean included;
+        IdentityChoice(Identity identity, boolean included) {
+            this.identity = identity;
+            this.included = included;
+        }
+    }
+
+    private static final class IdentityChoiceRenderer extends DefaultListCellRenderer {
+        @Override
+        public Component getListCellRendererComponent(JList<?> list, Object value, int index,
+                                                      boolean isSelected, boolean cellHasFocus) {
+            Component c = super.getListCellRendererComponent(list, value, index, isSelected, cellHasFocus);
+            if (value instanceof IdentityChoice choice) {
+                String marker = choice.included ? "☑" : "☐";
+                setText(marker + "   " + choice.identity.name());
+            }
+            return c;
+        }
     }
 
     private void setStatus(String msg) {
