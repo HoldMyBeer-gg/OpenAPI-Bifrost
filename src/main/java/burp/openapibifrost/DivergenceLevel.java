@@ -28,6 +28,40 @@ public enum DivergenceLevel {
     /** Non-monotonic: a lower-priority identity got a 2xx that a higher-priority did not (or similar). */
     DIVERGENT;
 
+    /** Short human-readable label for UI columns and CSV output. */
+    public String humanLabel() {
+        return switch (this) {
+            case UNKNOWN -> "Unknown";
+            case ALL_ERRORED -> "All errored";
+            case CONSISTENT_ALLOW -> "Consistent allow";
+            case CONSISTENT_DENY -> "Consistent deny";
+            case TIERED -> "Tiered";
+            case DIVERGENT -> "Divergent";
+        };
+    }
+
+    /**
+     * Longer single-sentence explanation suitable for tooltips and the CSV's
+     * explanation column. Written so a reader unfamiliar with the tool can make
+     * sense of a row without needing to consult the README.
+     */
+    public String explanation() {
+        return switch (this) {
+            case UNKNOWN ->
+                    "Row is not fully computed yet (or the run was cancelled).";
+            case ALL_ERRORED ->
+                    "Every identity's request failed at the network layer — can't judge access.";
+            case CONSISTENT_ALLOW ->
+                    "Every identity got a 2xx — endpoint is effectively public or tiering is broken open.";
+            case CONSISTENT_DENY ->
+                    "Every identity got a 4xx/5xx — consistent rejection across all roles.";
+            case TIERED ->
+                    "Lower-privilege identities denied, higher-privilege allowed — healthy role separation.";
+            case DIVERGENT ->
+                    "A lower-privilege identity got a 2xx where a higher-privilege one did not — possible authorization inversion.";
+        };
+    }
+
     /**
      * Classifies a row of cells in identity-priority order.
      *

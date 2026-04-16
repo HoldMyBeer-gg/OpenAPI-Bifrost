@@ -26,7 +26,17 @@ public final class AccessRuleSet {
         OK,
         VIOLATION,
         /** Cell errored; can't judge. */
-        INCONCLUSIVE
+        INCONCLUSIVE;
+
+        /** Short human-readable label for CSV/UI. Returns "" for NO_EXPECTATION. */
+        public String humanLabel() {
+            return switch (this) {
+                case NO_EXPECTATION -> "";
+                case OK -> "OK";
+                case VIOLATION -> "Violation";
+                case INCONCLUSIVE -> "Inconclusive";
+            };
+        }
     }
 
     private final List<AccessRule> rules;

@@ -94,4 +94,40 @@ class DivergenceLevelTest {
         assertEquals(DivergenceLevel.ALL_ERRORED,
                 DivergenceLevel.classify(List.of(err())));
     }
+
+    @Test
+    void humanLabel_coversEveryEnumValue() {
+        for (DivergenceLevel level : DivergenceLevel.values()) {
+            String label = level.humanLabel();
+            assertNotNull(label);
+            assertFalse(label.isBlank(), "humanLabel should not be blank for " + level);
+            assertFalse(label.contains("_"), "humanLabel should not contain underscores for " + level);
+        }
+    }
+
+    @Test
+    void explanation_coversEveryEnumValueAndIsSubstantive() {
+        for (DivergenceLevel level : DivergenceLevel.values()) {
+            String explanation = level.explanation();
+            assertNotNull(explanation);
+            assertTrue(explanation.length() > 20, "explanation should be a real sentence for " + level);
+            assertFalse(explanation.contains("_"), "explanation should not contain enum names for " + level);
+        }
+    }
+
+    @Test
+    void humanLabel_specificValues() {
+        assertEquals("Tiered", DivergenceLevel.TIERED.humanLabel());
+        assertEquals("Divergent", DivergenceLevel.DIVERGENT.humanLabel());
+        assertEquals("Consistent allow", DivergenceLevel.CONSISTENT_ALLOW.humanLabel());
+        assertEquals("Consistent deny", DivergenceLevel.CONSISTENT_DENY.humanLabel());
+        assertEquals("All errored", DivergenceLevel.ALL_ERRORED.humanLabel());
+        assertEquals("Unknown", DivergenceLevel.UNKNOWN.humanLabel());
+    }
+
+    @Test
+    void explanation_divergentMentionsInversion() {
+        assertTrue(DivergenceLevel.DIVERGENT.explanation().toLowerCase().contains("inversion"),
+                "DIVERGENT explanation should name the inversion pattern");
+    }
 }

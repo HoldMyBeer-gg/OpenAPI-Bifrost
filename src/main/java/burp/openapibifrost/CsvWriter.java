@@ -44,8 +44,11 @@ public final class CsvWriter {
     }
 
     /**
-     * Serialises an RBAC result matrix to CSV. Columns: #, Method, Path, one column
-     * per identity (status code or "err"), Divergence, Assessment.
+     * Serialises an RBAC result matrix to CSV. Columns:
+     * {@code #, Method, Path, <identity>…, Divergence, Divergence explanation, Assessment}.
+     * Divergence and Assessment use human-readable labels (not raw enum names), and the
+     * explanation column makes each row self-documenting for non-developer stakeholders
+     * reading the export.
      */
     public static String fromMatrix(RbacResultTableModel model, AccessRuleSet rules) {
         CsvWriter w = new CsvWriter();
@@ -55,6 +58,7 @@ public final class CsvWriter {
         header.add("Path");
         header.addAll(model.identityNames());
         header.add("Divergence");
+        header.add("Divergence explanation");
         header.add("Assessment");
         w.writeRow(header);
         for (int r = 0; r < model.getRowCount(); r++) {
@@ -74,8 +78,10 @@ public final class CsvWriter {
                     worst = a;
                 }
             }
-            row.add(model.divergenceFor(r).name());
-            row.add(worst.name());
+            DivergenceLevel level = model.divergenceFor(r);
+            row.add(level.humanLabel());
+            row.add(level.explanation());
+            row.add(worst.humanLabel());
             w.writeRow(row);
         }
         return w.build();

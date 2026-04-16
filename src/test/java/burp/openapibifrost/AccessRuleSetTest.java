@@ -139,4 +139,16 @@ class AccessRuleSetTest {
     void constructorAcceptsNullList() {
         assertTrue(new AccessRuleSet(null).isEmpty());
     }
+
+    @Test
+    void assessmentHumanLabel_blankForNoExpectation() {
+        assertEquals("", AccessRuleSet.Assessment.NO_EXPECTATION.humanLabel());
+    }
+
+    @Test
+    void assessmentHumanLabel_formattedForRealValues() {
+        assertEquals("OK", AccessRuleSet.Assessment.OK.humanLabel());
+        assertEquals("Violation", AccessRuleSet.Assessment.VIOLATION.humanLabel());
+        assertEquals("Inconclusive", AccessRuleSet.Assessment.INCONCLUSIVE.humanLabel());
+    }
 }

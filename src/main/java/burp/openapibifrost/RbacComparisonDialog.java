@@ -183,7 +183,7 @@ public class RbacComparisonDialog extends JDialog {
             int count = histogram[level.ordinal()];
             if (count == 0) continue;
             if (!first) sb.append(", ");
-            sb.append(count).append(' ').append(level.name().toLowerCase().replace('_', ' '));
+            sb.append(count).append(' ').append(level.humanLabel().toLowerCase());
             first = false;
         }
         histogramLabel.setText(sb.toString());
@@ -267,9 +267,11 @@ public class RbacComparisonDialog extends JDialog {
             Component c = super.getTableCellRendererComponent(table, value, isSelected, hasFocus, row, column);
             if (!(value instanceof DivergenceLevel level)) {
                 setText("");
+                setToolTipText(null);
                 return c;
             }
-            setText(level.name().replace('_', ' '));
+            setText(level.humanLabel());
+            setToolTipText(level.explanation());
             if (!isSelected) {
                 switch (level) {
                     case DIVERGENT -> c.setBackground(new Color(0xFFD6D6));

@@ -63,7 +63,7 @@ class CsvWriterTest {
     void fromMatrix_emptyModelProducesHeaderOnly() {
         var model = new RbacResultTableModel(List.of(), List.of("anon", "admin"));
         String csv = CsvWriter.fromMatrix(model, AccessRuleSet.empty());
-        assertEquals("#,Method,Path,anon,admin,Divergence,Assessment\r\n", csv);
+        assertEquals("#,Method,Path,anon,admin,Divergence,Divergence explanation,Assessment\r\n", csv);
     }
 
     @Test
@@ -77,8 +77,11 @@ class CsvWriterTest {
         var rules = AccessRuleSet.parse("Admin -> admin");
         String csv = CsvWriter.fromMatrix(model, rules);
         String[] lines = csv.split("\r\n");
-        assertEquals("#,Method,Path,anon,admin,Divergence,Assessment", lines[0]);
-        assertEquals("1,GET,/admin,401,200,TIERED,OK", lines[1]);
+        assertEquals("#,Method,Path,anon,admin,Divergence,Divergence explanation,Assessment", lines[0]);
+        // Row contains: index, method, path, status, status, "Tiered", quoted explanation, "OK".
+        assertTrue(lines[1].startsWith("1,GET,/admin,401,200,Tiered,"));
+        assertTrue(lines[1].endsWith(",OK"));
+        assertTrue(lines[1].contains("role separation"), "explanation should be present");
     }
 
     @Test
@@ -92,7 +95,7 @@ class CsvWriterTest {
 
         var rules = AccessRuleSet.parse("Admin -> admin");
         String csv = CsvWriter.fromMatrix(model, rules);
-        assertTrue(csv.contains(",VIOLATION\r\n"), "user's 200 on admin-tagged endpoint should mark VIOLATION");
+        assertTrue(csv.contains(",Violation\r\n"), "user's 200 on admin-tagged endpoint should mark Violation");
     }
 
     @Test
@@ -114,8 +117,11 @@ class CsvWriterTest {
         model.setCell(0, 0, RbacCellResult.ok(200, 0, 0), null);
         // col 1 left pending
         String csv = CsvWriter.fromMatrix(model, AccessRuleSet.empty());
-        // Row should be: 1,GET,/x,200,,UNKNOWN,NO_EXPECTATION
-        assertTrue(csv.contains("1,GET,/x,200,,UNKNOWN,NO_EXPECTATION"),
-                "pending cell should render as empty field, got: " + csv);
+        assertTrue(csv.contains("1,GET,/x,200,,Unknown,"),
+                "pending cell should render as empty field and divergence as Unknown, got: " + csv);
+        // Last column (Assessment) should be empty when no rule applies.
+        String[] lines = csv.split("\r\n");
+        assertTrue(lines[1].endsWith(","),
+                "Assessment should be blank when no rule applies, row was: " + lines[1]);
     }
 }
