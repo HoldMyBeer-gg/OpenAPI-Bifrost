@@ -785,30 +785,42 @@ public class OpenAPIBifrostTab extends JPanel {
         String baseUrl = deriveBaseUrl(req);
         if (baseUrl != null) {
             baseUrlOverrideField.setText(baseUrl);
-        }
-
-        HttpResponse response = rr.response();
-        if (response != null) {
-            String body = response.bodyToString();
-            if (HeaderClassifier.looksLikeSpecBody(body)) {
-                rawSpecArea.setText(body);
-                setStatus("Imported auth + detected OpenAPI spec in response body — click Parse.");
-                updateRequestPreview();
-                captureActiveIdentity();
-                return;
-            }
+            logging.logToOutput("Imported base URL: " + baseUrl);
+        } else {
+            logging.logToOutput("Could not derive base URL — req.httpService() was null. URL: " + safeUrl(req));
         }
 
         String fullUrl = safeUrl(req);
-        if (HeaderClassifier.isSpecUrlPath(req.path()) && fullUrl != null) {
-            urlOrPathField.setText(fullUrl);
+        HttpResponse response = rr.response();
+        String body = response != null ? response.bodyToString() : null;
+        boolean haveSpecBody = HeaderClassifier.looksLikeSpecBody(body);
+        boolean looksLikeSpecPath = HeaderClassifier.isSpecUrlPath(req.path()) && fullUrl != null;
+
+        if (haveSpecBody || looksLikeSpecPath) {
+            if (fullUrl != null) urlOrPathField.setText(fullUrl);
+            if (haveSpecBody) {
+                rawSpecArea.setText(body);
+                setStatus("Imported auth + spec body — parsing now...");
+                updateRequestPreview();
+                captureActiveIdentity();
+                parseInBackground(body.trim(), fullUrl != null ? fullUrl : "pasted");
+                return;
+            }
             setStatus("Imported auth + spec URL — click Load.");
             updateRequestPreview();
             captureActiveIdentity();
             return;
         }
 
-        setStatus("Imported auth from request. Load a spec URL or paste a spec to continue.");
+        // No spec detected in the request. Guess the most common spec path on the same host
+        // so the user can just click Load instead of typing the URL themselves.
+        if (baseUrl != null && urlOrPathField.getText().isBlank()) {
+            String guess = baseUrl + "/openapi.json";
+            urlOrPathField.setText(guess);
+            setStatus("Imported auth. Guessed spec URL " + guess + " — click Load (or edit if your spec lives elsewhere).");
+        } else {
+            setStatus("Imported auth from request. Load a spec URL or paste a spec to continue.");
+        }
         updateRequestPreview();
         captureActiveIdentity();
     }
