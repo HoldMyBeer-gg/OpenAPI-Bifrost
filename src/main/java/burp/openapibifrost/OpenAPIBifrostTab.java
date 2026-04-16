@@ -835,6 +835,45 @@ public class OpenAPIBifrostTab extends JPanel {
             setStatus("No request to import.");
             return;
         }
+
+        // If more than one identity exists, ask which one should receive this auth.
+        // Silent overwrite of the wrong identity is a nasty false-negative source:
+        // "SuperAdmin got 401 too?" → turns out you overwrote SuperAdmin's cookie with
+        // regularuser's during import. Only prompt when ambiguous — single-identity
+        // users (the common first-run case) aren't bothered.
+        if (identityStore.size() > 1) {
+            Integer targetIndex = promptForImportTarget();
+            if (targetIndex == null) {
+                setStatus("Import cancelled.");
+                return;
+            }
+            if (targetIndex == identityStore.size()) {
+                // User picked "new identity".
+                String name = (String) JOptionPane.showInputDialog(
+                        this, "Name for new identity:", "New identity",
+                        JOptionPane.PLAIN_MESSAGE, null, null, "identity-" + (identityStore.size() + 1));
+                if (name == null || name.isBlank()) {
+                    setStatus("Import cancelled.");
+                    return;
+                }
+                try {
+                    captureActiveIdentity();
+                    identityStore.add(Identity.empty(name.trim()));
+                    refreshIdentityDropdown();
+                    loadActiveIdentityIntoFields();
+                } catch (IllegalArgumentException ex) {
+                    JOptionPane.showMessageDialog(this, ex.getMessage(),
+                            "Cannot add identity", JOptionPane.WARNING_MESSAGE);
+                    return;
+                }
+            } else if (targetIndex != identityStore.activeIndex()) {
+                captureActiveIdentity();
+                identityStore.setActive(targetIndex);
+                refreshIdentityDropdown();
+                loadActiveIdentityIntoFields();
+            }
+        }
+
         HttpRequest req = rr.request();
         List<String> rawLines = new ArrayList<>();
         for (HttpHeader h : req.headers()) {
@@ -900,6 +939,43 @@ public class OpenAPIBifrostTab extends JPanel {
         }
         updateRequestPreview();
         captureActiveIdentity();
+    }
+
+    /**
+     * Modal picker shown during "Send to OpenAPI-Bifrost" when more than one identity
+     * exists. Returns the chosen existing identity index, {@code identityStore.size()}
+     * to signal "create new identity", or {@code null} if the user cancelled.
+     */
+    private Integer promptForImportTarget() {
+        List<Identity> all = identityStore.identities();
+        JPanel panel = new JPanel();
+        panel.setLayout(new BoxLayout(panel, BoxLayout.Y_AXIS));
+        panel.add(new JLabel("Which identity should receive this auth?"));
+        panel.add(Box.createVerticalStrut(6));
+
+        ButtonGroup group = new ButtonGroup();
+        List<JRadioButton> buttons = new ArrayList<>();
+        int activeIdx = identityStore.activeIndex();
+        for (int i = 0; i < all.size(); i++) {
+            JRadioButton rb = new JRadioButton(all.get(i).name(), i == activeIdx);
+            buttons.add(rb);
+            group.add(rb);
+            panel.add(rb);
+        }
+        JRadioButton newRb = new JRadioButton("Create new identity…");
+        group.add(newRb);
+        panel.add(Box.createVerticalStrut(4));
+        panel.add(newRb);
+
+        int choice = JOptionPane.showConfirmDialog(this, panel,
+                "Send to OpenAPI-Bifrost — choose identity",
+                JOptionPane.OK_CANCEL_OPTION, JOptionPane.PLAIN_MESSAGE);
+        if (choice != JOptionPane.OK_OPTION) return null;
+        if (newRb.isSelected()) return all.size();
+        for (int i = 0; i < buttons.size(); i++) {
+            if (buttons.get(i).isSelected()) return i;
+        }
+        return null; // Nothing selected — treat as cancel.
     }
 
     private static String safeUrl(HttpRequest req) {
