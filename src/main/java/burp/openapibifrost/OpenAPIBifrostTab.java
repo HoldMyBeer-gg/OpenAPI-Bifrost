@@ -1284,14 +1284,19 @@ public class OpenAPIBifrostTab extends JPanel {
         list.setSelectedIndex(0);
         list.setVisibleRowCount(Math.min(listModel.getSize() + 1, 8));
 
-        // Click-to-toggle the included flag; double-click doesn't reorder (use buttons).
+        // Double-click (or Space) toggles the included flag. Single click just selects
+        // the row — so Move up/down buttons can reorder without disabling as a side effect.
         list.addMouseListener(new MouseAdapter() {
             @Override public void mouseClicked(MouseEvent e) {
+                if (e.getClickCount() < 2) return;
                 int idx = list.locationToIndex(e.getPoint());
-                if (idx < 0) return;
-                IdentityChoice choice = listModel.get(idx);
-                choice.included = !choice.included;
-                listModel.set(idx, choice);
+                toggleAt(listModel, idx);
+            }
+        });
+        list.getInputMap().put(KeyStroke.getKeyStroke(KeyEvent.VK_SPACE, 0), "bifrost-toggle");
+        list.getActionMap().put("bifrost-toggle", new AbstractAction() {
+            @Override public void actionPerformed(ActionEvent e) {
+                toggleAt(listModel, list.getSelectedIndex());
             }
         });
 
@@ -1316,7 +1321,7 @@ public class OpenAPIBifrostTab extends JPanel {
         JLabel header = new JLabel("Run each selected endpoint with each ticked identity.");
         JLabel orderHint = new JLabel("Order top → bottom is priority ascending:  put LEAST-privileged at top, MOST-privileged at bottom.");
         orderHint.setForeground(UIManager.getColor("Label.disabledForeground"));
-        JLabel clickHint = new JLabel("Click a row to toggle its checkbox. Use Move up/down to reorder.");
+        JLabel clickHint = new JLabel("Double-click (or Space) to toggle ☑/☐. Use Move up/down to reorder.");
         clickHint.setForeground(UIManager.getColor("Label.disabledForeground"));
         panel.add(header);
         panel.add(Box.createVerticalStrut(2));
@@ -1340,6 +1345,13 @@ public class OpenAPIBifrostTab extends JPanel {
             return null;
         }
         return picked;
+    }
+
+    private static void toggleAt(DefaultListModel<IdentityChoice> model, int idx) {
+        if (idx < 0 || idx >= model.getSize()) return;
+        IdentityChoice choice = model.get(idx);
+        choice.included = !choice.included;
+        model.set(idx, choice);
     }
 
     private static void moveSelected(JList<IdentityChoice> list, DefaultListModel<IdentityChoice> model, int direction) {
