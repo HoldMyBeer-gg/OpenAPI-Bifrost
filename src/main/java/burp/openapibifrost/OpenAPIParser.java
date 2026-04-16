@@ -1,9 +1,12 @@
 package burp.openapibifrost;
 
+import io.swagger.v3.oas.models.Components;
 import io.swagger.v3.oas.models.OpenAPI;
 import io.swagger.v3.oas.models.Operation;
 import io.swagger.v3.oas.models.PathItem;
 import io.swagger.v3.oas.models.parameters.Parameter;
+import io.swagger.v3.oas.models.security.SecurityRequirement;
+import io.swagger.v3.oas.models.security.SecurityScheme;
 import io.swagger.v3.oas.models.servers.Server;
 import io.swagger.v3.parser.OpenAPIV3Parser;
 import io.swagger.v3.parser.core.models.SwaggerParseResult;
@@ -11,12 +14,16 @@ import io.swagger.v3.parser.core.models.SwaggerParseResult;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
 /**
  * Parses OpenAPI 2.0 (Swagger) and 3.x specifications into {@link ApiEndpoint} lists.
  * Uses Swagger Parser for JSON and YAML. Strips leading shell prompts from pasted content.
+ * Also extracts declared {@code securitySchemes} and per-operation {@code security}
+ * requirements for auth-aware flows.
  *
  * @author jabberwock
  * @since 1.0
@@ -27,11 +34,12 @@ public class OpenAPIParser {
     public ParseResult parse(String location, String specContent) {
         List<ApiEndpoint> endpoints = new ArrayList<>();
         List<String> errors = new ArrayList<>();
+        List<SecuritySchemeInfo> securitySchemes = new ArrayList<>();
         String defaultServer = "";
 
         if (specContent == null || specContent.isBlank()) {
             errors.add("Spec content is empty");
-            return new ParseResult(endpoints, errors, defaultServer);
+            return new ParseResult(endpoints, errors, defaultServer, securitySchemes);
         }
 
         String cleaned = stripLeadingShellPrompt(specContent.trim());
@@ -44,7 +52,7 @@ public class OpenAPIParser {
             } else {
                 errors.add("Failed to parse OpenAPI spec");
             }
-            return new ParseResult(endpoints, errors, defaultServer);
+            return new ParseResult(endpoints, errors, defaultServer, securitySchemes);
         }
 
         if (parseResult.getMessages() != null) {
@@ -52,10 +60,12 @@ public class OpenAPIParser {
         }
 
         defaultServer = resolveDefaultServer(openAPI);
+        securitySchemes = extractSecuritySchemes(openAPI);
+        List<String> globalSecurityNames = extractSecurityRequirementNames(openAPI.getSecurity());
 
         Map<String, PathItem> paths = openAPI.getPaths();
         if (paths == null) {
-            return new ParseResult(endpoints, errors, defaultServer);
+            return new ParseResult(endpoints, errors, defaultServer, securitySchemes);
         }
 
         int index = 1;
@@ -92,12 +102,21 @@ public class OpenAPIParser {
                     }
                 }
 
-                ApiEndpoint endpoint = new ApiEndpoint(index++, scheme, method, server, path, params, description);
+                List<String> requiredSchemes = operation.getSecurity() != null
+                        ? extractSecurityRequirementNames(operation.getSecurity())
+                        : globalSecurityNames;
+                List<String> tags = operation.getTags() != null
+                        ? new ArrayList<>(operation.getTags())
+                        : Collections.emptyList();
+
+                ApiEndpoint endpoint = new ApiEndpoint(
+                        index++, scheme, method, server, path, params, description,
+                        requiredSchemes, tags);
                 endpoints.add(endpoint);
             }
         }
 
-        return new ParseResult(endpoints, errors, defaultServer);
+        return new ParseResult(endpoints, errors, defaultServer, securitySchemes);
     }
 
     private String resolveDefaultServer(OpenAPI openAPI) {
@@ -119,6 +138,74 @@ public class OpenAPIParser {
             url = url.substring(0, url.length() - 1);
         }
         return url;
+    }
+
+    /**
+     * Extracts every declared security scheme from {@code components.securitySchemes},
+     * mapping swagger-parser types to our internal {@link SecuritySchemeInfo}. Preserves
+     * declaration order via LinkedHashMap semantics in the underlying parser.
+     */
+    static List<SecuritySchemeInfo> extractSecuritySchemes(OpenAPI openAPI) {
+        Components components = openAPI.getComponents();
+        if (components == null || components.getSecuritySchemes() == null) {
+            return new ArrayList<>();
+        }
+        Map<String, SecurityScheme> rawSchemes = new LinkedHashMap<>(components.getSecuritySchemes());
+        List<SecuritySchemeInfo> result = new ArrayList<>();
+        for (Map.Entry<String, SecurityScheme> entry : rawSchemes.entrySet()) {
+            String name = entry.getKey();
+            SecurityScheme ss = entry.getValue();
+            if (ss == null || ss.getType() == null) {
+                result.add(SecuritySchemeInfo.other(name));
+                continue;
+            }
+            switch (ss.getType()) {
+                case HTTP:
+                    String httpScheme = ss.getScheme() != null ? ss.getScheme().toLowerCase() : "";
+                    if ("bearer".equals(httpScheme)) {
+                        result.add(SecuritySchemeInfo.bearer(name, ss.getBearerFormat()));
+                    } else if ("basic".equals(httpScheme)) {
+                        result.add(SecuritySchemeInfo.basic(name));
+                    } else {
+                        result.add(SecuritySchemeInfo.other(name));
+                    }
+                    break;
+                case APIKEY:
+                    String inLocation = ss.getIn() != null ? ss.getIn().toString().toLowerCase() : "header";
+                    result.add(SecuritySchemeInfo.apiKey(name, inLocation, ss.getName()));
+                    break;
+                case OAUTH2:
+                    result.add(SecuritySchemeInfo.oauth2(name));
+                    break;
+                case OPENIDCONNECT:
+                    result.add(SecuritySchemeInfo.openIdConnect(name));
+                    break;
+                default:
+                    result.add(SecuritySchemeInfo.other(name));
+            }
+        }
+        return result;
+    }
+
+    /**
+     * Collects the names of all security schemes referenced by a list of
+     * {@link SecurityRequirement}s. Each requirement is a Map&lt;schemeName, scopes&gt;;
+     * we keep the keys (scheme names), discard the scope lists (OAuth2-only).
+     * An empty list input returns an empty result — an explicit {@code security: []}
+     * override means "no auth required."
+     */
+    static List<String> extractSecurityRequirementNames(List<SecurityRequirement> requirements) {
+        if (requirements == null || requirements.isEmpty()) return Collections.emptyList();
+        List<String> names = new ArrayList<>();
+        for (SecurityRequirement req : requirements) {
+            if (req == null) continue;
+            for (String name : req.keySet()) {
+                if (name != null && !name.isBlank() && !names.contains(name)) {
+                    names.add(name);
+                }
+            }
+        }
+        return names;
     }
 
     /**
@@ -154,17 +241,27 @@ public class OpenAPIParser {
 
     /**
      * Result of parsing an OpenAPI specification. Contains the parsed endpoints,
-     * any warning or error messages from the parser, and the default server URL.
+     * any warning or error messages from the parser, the default server URL, and
+     * the list of declared security schemes.
      */
     public static class ParseResult {
         private final List<ApiEndpoint> endpoints;
         private final List<String> messages;
         private final String defaultServer;
+        private final List<SecuritySchemeInfo> securitySchemes;
 
         public ParseResult(List<ApiEndpoint> endpoints, List<String> messages, String defaultServer) {
+            this(endpoints, messages, defaultServer, Collections.emptyList());
+        }
+
+        public ParseResult(List<ApiEndpoint> endpoints, List<String> messages, String defaultServer,
+                           List<SecuritySchemeInfo> securitySchemes) {
             this.endpoints = endpoints;
             this.messages = messages;
             this.defaultServer = defaultServer;
+            this.securitySchemes = securitySchemes != null
+                    ? Collections.unmodifiableList(new ArrayList<>(securitySchemes))
+                    : Collections.emptyList();
         }
 
         public List<ApiEndpoint> getEndpoints() {
@@ -177,6 +274,10 @@ public class OpenAPIParser {
 
         public String getDefaultServer() {
             return defaultServer;
+        }
+
+        public List<SecuritySchemeInfo> getSecuritySchemes() {
+            return securitySchemes;
         }
     }
 }

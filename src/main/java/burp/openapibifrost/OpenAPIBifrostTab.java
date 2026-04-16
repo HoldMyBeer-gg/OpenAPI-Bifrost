@@ -69,6 +69,7 @@ public class OpenAPIBifrostTab extends JPanel {
     private JTable endpointTable;
     private HttpRequestEditor requestEditor;
     private JLabel statusLabel;
+    private JLabel specAuthSummaryLabel;
     private String defaultServer = "";
     private boolean hasScanner = false;
 
@@ -396,6 +397,7 @@ public class OpenAPIBifrostTab extends JPanel {
         if (!defaultServer.isEmpty() && (existingOverride == null || existingOverride.isBlank())) {
             baseUrlOverrideField.setText(defaultServer);
         }
+        applySpecSecuritySchemes(result.getSecuritySchemes());
         tableModel.setFilter(filterField.getText());
         updateFilterHits();
         updateRequestPreview();
@@ -456,6 +458,12 @@ public class OpenAPIBifrostTab extends JPanel {
         panel.setLayout(new BoxLayout(panel, BoxLayout.Y_AXIS));
         panel.setBorder(BorderFactory.createTitledBorder("Authentication (applied to all generated requests)"));
 
+        specAuthSummaryLabel = new JLabel(" ");
+        specAuthSummaryLabel.setForeground(UIManager.getColor("Label.disabledForeground"));
+        specAuthSummaryLabel.setBorder(new EmptyBorder(0, 5, 0, 5));
+        specAuthSummaryLabel.setAlignmentX(Component.LEFT_ALIGNMENT);
+        panel.add(specAuthSummaryLabel);
+
         JPanel bearerRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 5, 2));
         bearerRow.add(new JLabel("Bearer token:"));
         bearerField = new JTextField(45);
@@ -514,6 +522,46 @@ public class OpenAPIBifrostTab extends JPanel {
         });
 
         return panel;
+    }
+
+    /**
+     * Updates the spec-auth summary label and pre-fills the API key fields when the spec
+     * declares exactly one API-key scheme. Only fills fields that are currently empty —
+     * never clobbers user-entered values.
+     */
+    void applySpecSecuritySchemes(List<SecuritySchemeInfo> schemes) {
+        if (schemes == null || schemes.isEmpty()) {
+            specAuthSummaryLabel.setText("Spec declares no auth schemes.");
+            return;
+        }
+        StringBuilder summary = new StringBuilder("Spec declares: ");
+        for (int i = 0; i < schemes.size(); i++) {
+            if (i > 0) summary.append(", ");
+            summary.append(schemes.get(i).displayName());
+        }
+        specAuthSummaryLabel.setText(summary.toString());
+
+        // If exactly one apiKey scheme, pre-fill the apiKey name + location when the value is empty.
+        SecuritySchemeInfo singleApiKey = null;
+        for (SecuritySchemeInfo s : schemes) {
+            if (s.type() == SecuritySchemeInfo.SchemeType.API_KEY) {
+                if (singleApiKey != null) { singleApiKey = null; break; }
+                singleApiKey = s;
+            }
+        }
+        if (singleApiKey != null && apiKeyValueField.getText().isBlank()) {
+            if (singleApiKey.apiKeyName() != null && !singleApiKey.apiKeyName().isBlank()) {
+                apiKeyNameField.setText(singleApiKey.apiKeyName());
+            }
+            String loc = singleApiKey.apiKeyLocation();
+            if ("query".equalsIgnoreCase(loc)) {
+                apiKeyLocationCombo.setSelectedItem(AuthConfig.ApiKeyLocation.QUERY);
+            } else if ("cookie".equalsIgnoreCase(loc)) {
+                apiKeyLocationCombo.setSelectedItem(AuthConfig.ApiKeyLocation.COOKIE);
+            } else {
+                apiKeyLocationCombo.setSelectedItem(AuthConfig.ApiKeyLocation.HEADER);
+            }
+        }
     }
 
     private AuthConfig getAuthConfig() {

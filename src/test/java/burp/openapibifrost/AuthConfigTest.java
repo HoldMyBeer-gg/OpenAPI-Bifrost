@@ -93,4 +93,11 @@ class AuthConfigTest {
         assertFalse(a.isEmpty());
         assertEquals(1, a.extraHeaders().size());
     }
+
+    @Test
+    void basicUserAndPass_gettersExposeInputs() {
+        AuthConfig a = new AuthConfig(null, null, null, null, "admin", "hunter2");
+        assertEquals("admin", a.basicUser());
+        assertEquals("hunter2", a.basicPass());
+    }
 }
