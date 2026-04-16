@@ -1108,13 +1108,70 @@ public class OpenAPIBifrostTab extends JPanel {
         // Persist the latest state once more in case the picker dialog stole focus.
         captureActiveIdentity();
 
+        List<ApiEndpoint> filtered = confirmOrExcludeDestructive(selected);
+        if (filtered == null) return; // user cancelled
+        if (filtered.isEmpty()) {
+            setStatus("All selected endpoints were excluded — nothing to compare.");
+            return;
+        }
+
         RbacHttpSender sender = new MontoyaRbacHttpSender(api.http(), requestGenerator);
         Frame parent = api.userInterface().swingUtils().suiteFrame();
         RbacComparisonDialog dialog = new RbacComparisonDialog(
-                parent, api, selected, picked, sender, 6);
+                parent, api, filtered, picked, sender, 6);
         dialog.setVisible(true);
         dialog.startRun();
-        setStatus("RBAC comparison started: " + selected.size() + " endpoints × " + picked.size() + " identities.");
+        setStatus("RBAC comparison started: " + filtered.size() + " endpoints × " + picked.size() + " identities.");
+    }
+
+    /**
+     * Detects logout/delete/revoke endpoints in the selection. If any are present, prompts
+     * the user to exclude them from the comparison — firing /logout mid-run invalidates
+     * the very sessions we're testing with, producing garbage divergence data.
+     *
+     * @return filtered list to run (may exclude destructive entries), or {@code null} if
+     *         the user cancelled.
+     */
+    private List<ApiEndpoint> confirmOrExcludeDestructive(List<ApiEndpoint> selected) {
+        List<ApiEndpoint> risky = new ArrayList<>();
+        for (ApiEndpoint ep : selected) {
+            if (DestructiveEndpointDetector.isLikelyDestructive(ep)) risky.add(ep);
+        }
+        if (risky.isEmpty()) return selected;
+
+        StringBuilder msg = new StringBuilder("<html><body style='width:520px'>");
+        msg.append(risky.size()).append(" of ").append(selected.size())
+                .append(" selected endpoints look destructive. Running them across identities<br>")
+                .append("may invalidate the sessions you're comparing or mutate server state:<br><br>");
+        int shown = 0;
+        for (ApiEndpoint ep : risky) {
+            if (shown++ >= 12) break;
+            msg.append("&nbsp;&nbsp;• <b>").append(ep.getMethod()).append("</b> ").append(escapeHtml(ep.getPath()));
+            String reason = DestructiveEndpointDetector.reasonFor(ep);
+            if (!reason.isEmpty()) msg.append(" &nbsp;<i>— ").append(escapeHtml(reason)).append("</i>");
+            msg.append("<br>");
+        }
+        if (risky.size() > 12) {
+            msg.append("&nbsp;&nbsp;… and ").append(risky.size() - 12).append(" more<br>");
+        }
+        msg.append("<br>Exclude these from the comparison?</body></html>");
+
+        int choice = JOptionPane.showConfirmDialog(this, msg.toString(),
+                "Destructive endpoints detected",
+                JOptionPane.YES_NO_CANCEL_OPTION, JOptionPane.WARNING_MESSAGE);
+        if (choice == JOptionPane.CANCEL_OPTION || choice == JOptionPane.CLOSED_OPTION) return null;
+        if (choice == JOptionPane.YES_OPTION) {
+            List<ApiEndpoint> filtered = new ArrayList<>();
+            for (ApiEndpoint ep : selected) {
+                if (!DestructiveEndpointDetector.isLikelyDestructive(ep)) filtered.add(ep);
+            }
+            return filtered;
+        }
+        return selected; // NO — user explicitly wants to include them
+    }
+
+    private static String escapeHtml(String s) {
+        return s == null ? "" : s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;");
     }
 
     /** Puts a checkbox next to every identity name; returns those the user enabled, in priority order. */
