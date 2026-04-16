@@ -4,65 +4,76 @@ An alternative Burp Suite extension for loading OpenAPI specifications and bridg
 
 Offers a different feature set to the existing OpenAPI Parser extension — not a replacement.
 
-![Main panel — spec loaded, identity selected, endpoints listed](docs/screenshots/main-panel.png)
+![Main panel — spec loaded, four identities configured, session cookie imported, endpoints listed](docs/screenshots/main-panel.png)
 
 ## The RBAC differentiator
 
-Pick any subset of endpoints, right-click, and **Compare across identities** fires each request under each named identity you've configured. The resulting matrix highlights access patterns at a glance — coloured by status category, classified per-row by divergence (CONSISTENT ALLOW / CONSISTENT DENY / TIERED / DIVERGENT).
+Pick any subset of endpoints, right-click → **Compare across identities…**, and Bifrost runs each request under each named identity you've configured. The resulting live-updating matrix classifies every row by how far each identity got through the server's processing stack — surfacing authorization anomalies that would otherwise hide under generic "403" or "404" responses.
 
 ![RBAC comparison grid showing 150 endpoints × 4 identities, 600/600 cells completed in 19 seconds](docs/screenshots/rbac-comparison.png)
 
-TIERED (green) is healthy role separation — lower-privilege identities denied, higher ones allowed. DIVERGENT (red) flags the anomalies: a regular user getting 2xx where an admin-only endpoint should deny.
+Classification uses a stack-depth model rather than a plain allow/deny split:
 
-Right-click any cell to send that exact (endpoint, identity) request to Repeater. Export the full matrix to CSV for reporting. Declare tag→tier rules (e.g. `Admin -> admin*`) to overlay violation assessments.
+- **Consistent allow** (green) — every identity got a 2xx. Endpoint is effectively public or tiering is broken open.
+- **Consistent deny** (grey) — every identity hit the same wall. The resource may not exist for anyone, or everyone is blocked.
+- **Tiered** (light green) — higher-privilege identities reached further through the stack than lower-privilege ones. Healthy role separation, including subtler patterns like `403, 403, 404` where only admin passed auth.
+- **Divergent** (red) — a lower-privilege identity got further than a higher-privilege one. Possible authorization inversion.
+
+Right-click any cell to send that exact `(endpoint, identity)` request to Repeater. Export the full matrix to CSV — with a human-readable explanation column — for reporting. Declare tag→tier rules (e.g. `Admin -> admin*`) to overlay violation assessments directly in the grid and CSV.
+
+Destructive endpoints (`/logout`, `DELETE`, `/revoke`, etc.) are detected before the run starts and offered for exclusion by default — firing `/api/logout` mid-comparison invalidates the sessions you're testing with, which the tool gracefully refuses to do silently.
 
 ## Loading a spec
 
-Three ways:
+Multiple ways in:
 
-- **Drag and drop** a JSON/YAML file onto the drop zone
-- **Paste a URL** (optionally filling the Extra Headers with any auth the spec endpoint requires)
-- **Right-click any request in Proxy / Repeater / Logger → Send to OpenAPI-Bifrost** — auto-populates the host, copies auth (cookies, bearer tokens, API keys minus browser noise), and auto-parses if the response body is the spec. One click from "I have a working browser session" to "I have 132 parseable endpoints"
-- **Paste raw spec text** into the textarea
+- **Drag and drop** a JSON/YAML file onto the drop zone.
+- **Paste a URL or file path**, optionally filling Extra Headers with any auth the spec endpoint requires, then click Load.
+- **Right-click any request in Proxy / Repeater / Logger → Send to OpenAPI-Bifrost.** This is the fast path: host, base URL, and auth headers (cookies, bearer, API keys minus browser noise) are auto-imported. If the response body is an OpenAPI spec, it's auto-parsed — one click from "I have a working browser session" to a parsed endpoint list. If it isn't but the host suggests a spec (`/openapi.json`, `/swagger.json`, `/v3/api-docs`), the URL field pre-fills so Load is a single click.
+- **Paste raw spec text** into the textarea and hit Parse.
 
-Supports **OpenAPI 2.0 (Swagger) and OpenAPI 3.x** in both JSON and YAML.
+When multiple identities exist, "Send to OpenAPI-Bifrost" prompts for which identity should receive the imported auth — preventing silent overwrites that were a source of false-negative RBAC results.
 
-## Authentication
+Supports **OpenAPI 2.0 (Swagger) and OpenAPI 3.x** in both JSON and YAML. Handles the common shell-prompt paste (strips leading `anon@host:/$ cat openapi.json` chatter). Path parameters get format-aware placeholders based on the spec's schema: `format: uuid` → a real UUID, `format: date-time` → a valid ISO timestamp, enums use their first value, etc. Strict server-side validators therefore route the request to the auth layer instead of bouncing it at the URL-match stage.
 
-One identity can be active at a time. Each holds its own:
-- **Bearer token** (whitespace/newlines stripped automatically for multi-line JWT paste)
-- **API key** — value, header name, and location (header / query / cookie)
-- **HTTP Basic** — user + password (stored in JPasswordField)
+## Authentication and identities
+
+Bifrost centres on **named identities**. Each identity holds:
+
+- **Bearer token** (whitespace/newlines stripped automatically for multi-line JWT paste).
+- **API key** — value, header name, and location (header / query / cookie).
+- **HTTP Basic** — user + password.
 - **Extra headers** — free-form textarea for anything else (`Cookie:`, `X-Tenant:`, `X-CSRF-Token:`, whatever). Overrides the above on collision, so you can paste raw headers verbatim from a working request.
 - **Base URL override** — per-identity, so "admin on staging" and "user on prod" stay straight.
 
-When a spec declares `components.securitySchemes`, the panel shows a one-line summary and pre-fills the API key header name if the spec uses one.
+Switch via the dropdown in the Authentication panel; add / rename / delete named identities with the buttons alongside. Identities **persist across Burp restarts** via the Java preferences store.
 
-Identities persist across Burp restarts via the Java preferences store. Add / rename / delete from the Auth panel's dropdown.
+When a spec declares `components.securitySchemes`, the panel shows a one-line summary and pre-fills the API key header name if exactly one `apiKey` scheme is declared.
 
 ## Sending to Burp tools
 
-Select one or many endpoints → right-click → **OpenAPI-Bifrost** →
-- **Actively Scan** (Pro only) — sends to Scanner with your active identity's auth, checks scope, fires a single audit task for the whole batch, surfaces HTTP 401/403 explicitly if the scope gate blocks you.
-- **Send to Repeater** — one tab per endpoint, named `METHOD /path`.
-- **Send to Intruder** — auto-marks URL, cookie, and body parameter values as insertion points (via Montoya's `REPLACE_BASE_PARAMETER_VALUE_WITH_OFFSETS`). Auth headers are not marked.
-- **Compare across identities…** — the RBAC grid described above.
+Select one or more endpoints → right-click → **OpenAPI-Bifrost** →
 
-Ctrl+I / Cmd+I shortcut sends selection to Intruder.
+- **Actively Scan** (Pro only) — sends to Scanner with your active identity's auth. Pre-checks scope and aborts with a clear message if all selected endpoints are out of scope (Scanner otherwise silently drops them). Fires a single audit task for the whole batch.
+- **Send to Repeater** — one tab per endpoint, named `METHOD /path`.
+- **Send to Intruder** — auto-marks URL, cookie, and body parameter values as insertion points. Auth headers are not marked, so your session cookie / bearer token don't get overwritten by fuzz payloads.
+- **Compare across identities…** — the RBAC grid. A reorderable picker lets you choose which identities to run against and set their priority order (least-privileged at top, most at bottom). Destructive endpoints in your selection are flagged and offered for exclusion.
+
+Ctrl+I / Cmd+I sends the selection to Intruder.
 
 ## Usability details
 
-- **Sortable columns** — click any header. `#` sorts numerically (not "1, 10, 11, 2").
+- **Sortable columns** on the endpoint table — click any header. `#` sorts numerically (not `1, 10, 11, 2`).
 - **Regex filter** (case-sensitive, capped at 500 chars to mitigate ReDoS). Live row counter.
-- **Shell prompt stripping** — paste `anon@host:/mnt/d$ cat openapi.json` followed by the file's contents; leading prompt lines get dropped up to the first `openapi:` / `swagger:` / `{`.
-- **Scope awareness** — Actively Scan aborts with a clear message if all selected endpoints are out of scope (Scanner otherwise silently drops them).
+- **Live request preview** updates when you select an endpoint or change auth fields, showing exactly what will be sent.
+- **Double-click (or Space)** toggles identity inclusion in the comparison picker; single-click just selects so you can reorder with Move Up / Down without toggling as a side effect.
 
 ## Installation
 
 1. Build: `./gradlew build`
-2. In Burp: **Extensions → Installed → Add → Extension type: Java →** select `build/libs/OpenAPI-Bifrost-1.0.jar`
+2. In Burp: **Extensions → Installed → Add → Extension type: Java →** select `build/libs/OpenAPI-Bifrost-1.0.jar`.
 
-Requires Burp Suite with Montoya support. Active Scan and the Scanner send-to feature require Burp Suite Professional; everything else works on Community.
+Requires Burp Suite with Montoya support. Active Scan requires Burp Suite Professional; everything else (RBAC comparison, imports, Intruder, Repeater) works on Community.
 
 ## Build
 
@@ -70,7 +81,7 @@ Requires Burp Suite with Montoya support. Active Scan and the Scanner send-to fe
 ./gradlew build
 ```
 
-Requires Java 17+. Runs the full unit-test suite, Cucumber BDD tests, and JaCoCo coverage verification (80% line coverage gate).
+Requires Java 17+. Runs the full JUnit 5 suite, Cucumber BDD scenarios, and JaCoCo coverage verification (80% line coverage gate on non-UI classes).
 
 ## License
 
