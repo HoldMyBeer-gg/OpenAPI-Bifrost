@@ -109,40 +109,37 @@ public class OpenAPIBifrostTab extends JPanel {
         setLayout(new BorderLayout(10, 10));
         setBorder(new EmptyBorder(10, 10, 10, 10));
 
-        JPanel topPanel = new JPanel(new BorderLayout(5, 5));
+        JPanel topPanel = new JPanel(new GridBagLayout());
 
-        // Drop zone
+        // Drop zone spans the full width.
         JPanel dropZone = new JPanel(new GridBagLayout());
-        dropZone.setPreferredSize(new Dimension(0, 80));
+        dropZone.setPreferredSize(new Dimension(0, 70));
         dropZone.setBorder(BorderFactory.createCompoundBorder(
                 new LineBorder(UIManager.getColor("Component.borderColor"), 2),
-                new EmptyBorder(10, 10, 10, 10)
+                new EmptyBorder(8, 10, 8, 10)
         ));
         dropZone.setBackground(UIManager.getColor("Panel.background"));
         JLabel dropLabel = new JLabel("Drop OpenAPI spec here, paste URL/path below, or paste raw JSON/YAML");
         dropZone.add(dropLabel);
         setupDropTarget(dropZone);
-        topPanel.add(dropZone, BorderLayout.NORTH);
 
-        // URL/path input row
-        JPanel inputRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 5, 5));
-        inputRow.add(new JLabel("Parse from local file or URL:"));
-        urlOrPathField = new JTextField(50);
-        inputRow.add(urlOrPathField);
+        GridBagConstraints full = rowConstraints(0);
+        full.gridwidth = GridBagConstraints.REMAINDER;
+        full.fill = GridBagConstraints.HORIZONTAL;
+        full.weightx = 1.0;
+        full.insets = new Insets(0, 0, 8, 0);
+        topPanel.add(dropZone, full);
+
+        // Parse-from row: label + field + Browse + Load.
+        urlOrPathField = new JTextField();
         JButton browseBtn = new JButton("Browse");
         browseBtn.addActionListener(e -> doBrowse());
-        inputRow.add(browseBtn);
         JButton loadBtn = new JButton("Load");
         loadBtn.addActionListener(e -> doLoad());
-        inputRow.add(loadBtn);
-        topPanel.add(inputRow, BorderLayout.CENTER);
+        addFormRow(topPanel, 1, "Parse from local file or URL:", urlOrPathField, browseBtn, loadBtn);
 
-        // Base URL override + Raw spec paste
-        JPanel southPanel = new JPanel();
-        southPanel.setLayout(new BoxLayout(southPanel, BoxLayout.Y_AXIS));
-        JPanel overrideRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 5, 5));
-        overrideRow.add(new JLabel("Base URL override (optional):"));
-        baseUrlOverrideField = new JTextField(40);
+        // Base URL override row.
+        baseUrlOverrideField = new JTextField();
         baseUrlOverrideField.setToolTipText("Override server URL from spec (e.g. https://api.target.com). Stored per identity.");
         baseUrlOverrideField.addFocusListener(new FocusAdapter() {
             @Override public void focusLost(FocusEvent e) {
@@ -150,22 +147,22 @@ public class OpenAPIBifrostTab extends JPanel {
                 updateRequestPreview();
             }
         });
-        overrideRow.add(baseUrlOverrideField);
-        southPanel.add(overrideRow);
+        addFormRow(topPanel, 2, "Base URL override (optional):", baseUrlOverrideField);
 
-        southPanel.add(buildAuthPanel());
+        // Auth panel — full width, already grid-aligned internally.
+        GridBagConstraints authC = rowConstraints(3);
+        authC.gridwidth = GridBagConstraints.REMAINDER;
+        authC.fill = GridBagConstraints.HORIZONTAL;
+        authC.weightx = 1.0;
+        authC.insets = new Insets(6, 0, 6, 0);
+        topPanel.add(buildAuthPanel(), authC);
 
-        JPanel pastePanel = new JPanel(new BorderLayout(5, 5));
-        pastePanel.add(new JLabel("Or paste raw OpenAPI spec (JSON/YAML):"), BorderLayout.NORTH);
+        // Raw spec paste area.
         rawSpecArea = new JTextArea(6, 60);
         rawSpecArea.setLineWrap(true);
         rawSpecArea.setFont(UIManager.getFont("TextArea.font"));
         JScrollPane rawSpecScroll = new JScrollPane(rawSpecArea);
-        rawSpecScroll.setBorder(BorderFactory.createCompoundBorder(
-                new LineBorder(UIManager.getColor("Component.borderColor"), 1),
-                new EmptyBorder(4, 4, 4, 4)
-        ));
-        pastePanel.add(rawSpecScroll, BorderLayout.CENTER);
+        rawSpecScroll.setBorder(new LineBorder(UIManager.getColor("Component.borderColor"), 1));
         JButton parseRawBtn = new JButton("Parse");
         parseRawBtn.addActionListener(e -> {
             String content = rawSpecArea.getText();
@@ -176,18 +173,37 @@ public class OpenAPIBifrostTab extends JPanel {
                 setStatus("Paste OpenAPI spec content (JSON or YAML) above, then click Parse.");
             }
         });
-        JPanel pasteBtnRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 0, 5));
-        pasteBtnRow.add(parseRawBtn);
-        pastePanel.add(pasteBtnRow, BorderLayout.SOUTH);
-        southPanel.add(pastePanel);
 
-        topPanel.add(southPanel, BorderLayout.SOUTH);
+        // "Or paste raw OpenAPI spec (JSON/YAML):" label row.
+        GridBagConstraints pasteLabelC = rowConstraints(4);
+        pasteLabelC.gridwidth = GridBagConstraints.REMAINDER;
+        pasteLabelC.anchor = GridBagConstraints.WEST;
+        pasteLabelC.fill = GridBagConstraints.HORIZONTAL;
+        pasteLabelC.insets = new Insets(4, 0, 2, 0);
+        topPanel.add(new JLabel("Or paste raw OpenAPI spec (JSON/YAML):"), pasteLabelC);
+
+        // Textarea row — full width, fills vertically to take remaining space.
+        GridBagConstraints textareaC = rowConstraints(5);
+        textareaC.gridwidth = GridBagConstraints.REMAINDER;
+        textareaC.fill = GridBagConstraints.BOTH;
+        textareaC.weightx = 1.0;
+        textareaC.weighty = 1.0;
+        textareaC.insets = new Insets(0, 0, 4, 0);
+        topPanel.add(rawSpecScroll, textareaC);
+
+        // Parse button aligned under the textarea.
+        GridBagConstraints btnC = rowConstraints(6);
+        btnC.gridwidth = GridBagConstraints.REMAINDER;
+        btnC.anchor = GridBagConstraints.WEST;
+        btnC.fill = GridBagConstraints.NONE;
+        btnC.insets = new Insets(0, 0, 0, 0);
+        topPanel.add(parseRawBtn, btnC);
 
         JScrollPane topScroll = new JScrollPane(topPanel);
         topScroll.setHorizontalScrollBarPolicy(ScrollPaneConstants.HORIZONTAL_SCROLLBAR_NEVER);
         topScroll.setVerticalScrollBarPolicy(ScrollPaneConstants.VERTICAL_SCROLLBAR_AS_NEEDED);
         topScroll.setBorder(BorderFactory.createEmptyBorder());
-        topScroll.getViewport().setPreferredSize(new Dimension(0, 420));
+        topScroll.getViewport().setPreferredSize(new Dimension(0, 460));
         add(topScroll, BorderLayout.NORTH);
 
         // Filter row and table/editor
@@ -477,64 +493,118 @@ public class OpenAPIBifrostTab extends JPanel {
     }
 
     private JPanel buildAuthPanel() {
-        JPanel panel = new JPanel();
-        panel.setLayout(new BoxLayout(panel, BoxLayout.Y_AXIS));
-        panel.setBorder(BorderFactory.createTitledBorder("Authentication (applied to all generated requests)"));
+        JPanel panel = new JPanel(new GridBagLayout());
+        panel.setBorder(BorderFactory.createTitledBorder("Authentication (applied to active identity)"));
 
-        panel.add(buildIdentityRow());
+        // Row 0: Identity dropdown + action buttons.
+        identityDropdown = new JComboBox<>();
+        identityDropdown.setToolTipText("Switch between named auth configurations. Each stores its own bearer/API key/basic/cookies.");
+        refreshIdentityDropdown();
+        identityDropdown.addActionListener(e -> {
+            if (suppressCapture) return;
+            int selected = identityDropdown.getSelectedIndex();
+            if (selected < 0 || selected == identityStore.activeIndex()) return;
+            captureActiveIdentity();
+            identityStore.setActive(selected);
+            loadActiveIdentityIntoFields();
+        });
 
+        JButton newBtn = new JButton("New…");
+        newBtn.addActionListener(e -> doNewIdentity());
+        JButton renameBtn = new JButton("Rename…");
+        renameBtn.addActionListener(e -> doRenameIdentity());
+        JButton deleteBtn = new JButton("Delete");
+        deleteBtn.addActionListener(e -> doDeleteIdentity());
+        addFormRow(panel, 0, "Identity:", identityDropdown, newBtn, renameBtn, deleteBtn);
+
+        // Row 1: spec-auth summary (dimmed). Aligns under the field column so it reads as metadata
+        // for the identity, not as a separate section.
         specAuthSummaryLabel = new JLabel(" ");
         specAuthSummaryLabel.setForeground(UIManager.getColor("Label.disabledForeground"));
-        specAuthSummaryLabel.setBorder(new EmptyBorder(0, 5, 0, 5));
-        specAuthSummaryLabel.setAlignmentX(Component.LEFT_ALIGNMENT);
-        panel.add(specAuthSummaryLabel);
+        GridBagConstraints summaryC = rowConstraints(1);
+        summaryC.gridx = 1;
+        summaryC.gridwidth = GridBagConstraints.REMAINDER;
+        summaryC.fill = GridBagConstraints.HORIZONTAL;
+        summaryC.weightx = 1.0;
+        summaryC.insets = new Insets(0, 6, 4, 0);
+        panel.add(specAuthSummaryLabel, summaryC);
 
-        JPanel bearerRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 5, 2));
-        bearerRow.add(new JLabel("Bearer token:"));
-        bearerField = new JTextField(45);
+        // Row 2: Bearer token.
+        bearerField = new JTextField();
         bearerField.setToolTipText("Whitespace/newlines stripped automatically. Sent as 'Authorization: Bearer <token>'.");
-        bearerRow.add(bearerField);
-        panel.add(bearerRow);
+        addFormRow(panel, 2, "Bearer token:", bearerField);
 
-        JPanel apiKeyRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 5, 2));
-        apiKeyRow.add(new JLabel("API key:"));
-        apiKeyValueField = new JTextField(20);
-        apiKeyRow.add(apiKeyValueField);
-        apiKeyRow.add(new JLabel("name:"));
-        apiKeyNameField = new JTextField("X-API-Key", 15);
-        apiKeyRow.add(apiKeyNameField);
-        apiKeyRow.add(new JLabel("in:"));
+        // Row 3: API key — value + name + location on one row using a sub-grid so they align.
+        JPanel apiKeySubrow = new JPanel(new GridBagLayout());
+        GridBagConstraints s = new GridBagConstraints();
+        s.gridy = 0;
+        s.insets = new Insets(0, 0, 0, 6);
+        s.fill = GridBagConstraints.HORIZONTAL;
+
+        apiKeyValueField = new JTextField();
+        s.gridx = 0; s.weightx = 0.55; apiKeySubrow.add(apiKeyValueField, s);
+
+        s.weightx = 0;
+        s.gridx = 1; apiKeySubrow.add(new JLabel("name:"), s);
+        apiKeyNameField = new JTextField("X-API-Key", 14);
+        s.gridx = 2; s.weightx = 0.35; apiKeySubrow.add(apiKeyNameField, s);
+
+        s.weightx = 0;
+        s.gridx = 3; apiKeySubrow.add(new JLabel("in:"), s);
         apiKeyLocationCombo = new JComboBox<>(AuthConfig.ApiKeyLocation.values());
-        apiKeyRow.add(apiKeyLocationCombo);
-        panel.add(apiKeyRow);
+        s.gridx = 4; s.insets = new Insets(0, 0, 0, 0); apiKeySubrow.add(apiKeyLocationCombo, s);
 
-        JPanel basicRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 5, 2));
-        basicRow.add(new JLabel("Basic auth — user:"));
-        basicUserField = new JTextField(15);
-        basicRow.add(basicUserField);
-        basicRow.add(new JLabel("pass:"));
-        basicPassField = new JPasswordField(15);
-        basicRow.add(basicPassField);
-        panel.add(basicRow);
+        addFormRow(panel, 3, "API key:", apiKeySubrow);
 
-        JPanel headersRow = new JPanel();
-        headersRow.setLayout(new BoxLayout(headersRow, BoxLayout.Y_AXIS));
-        headersRow.setBorder(new EmptyBorder(2, 5, 2, 5));
-        JLabel headersLabel = new JLabel("Extra headers (one per line, 'Name: Value' — overrides auth on collision):");
-        headersLabel.setAlignmentX(Component.LEFT_ALIGNMENT);
-        headersRow.add(headersLabel);
+        // Row 4: Basic auth — user + pass on one row with a sub-grid.
+        JPanel basicSubrow = new JPanel(new GridBagLayout());
+        GridBagConstraints b = new GridBagConstraints();
+        b.gridy = 0;
+        b.insets = new Insets(0, 0, 0, 6);
+        b.fill = GridBagConstraints.HORIZONTAL;
+
+        basicUserField = new JTextField();
+        b.gridx = 0; b.weightx = 0.5; basicSubrow.add(basicUserField, b);
+
+        b.weightx = 0;
+        b.gridx = 1; basicSubrow.add(new JLabel("pass:"), b);
+        basicPassField = new JPasswordField();
+        b.gridx = 2; b.weightx = 0.5; b.insets = new Insets(0, 0, 0, 0); basicSubrow.add(basicPassField, b);
+
+        addFormRow(panel, 4, "Basic auth — user:", basicSubrow);
+
+        // Row 5: Extra headers — label across 2 rows: short inline description, then textarea full width.
         extraHeadersArea = new JTextArea(3, 60);
         extraHeadersArea.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 12));
         extraHeadersArea.setToolTipText("Example: X-Tenant: acme  (or paste 'Cookie: session=...' for session-based APIs)");
         JScrollPane headersScroll = new JScrollPane(extraHeadersArea);
         headersScroll.setBorder(new LineBorder(UIManager.getColor("Component.borderColor"), 1));
-        headersScroll.setAlignmentX(Component.LEFT_ALIGNMENT);
-        headersScroll.setPreferredSize(new Dimension(600, 70));
-        headersScroll.setMaximumSize(new Dimension(Integer.MAX_VALUE, 70));
-        headersRow.add(headersScroll);
-        headersRow.setMaximumSize(new Dimension(Integer.MAX_VALUE, 100));
-        panel.add(headersRow);
 
+        GridBagConstraints headersLabelC = rowConstraints(5);
+        headersLabelC.gridx = 0;
+        headersLabelC.anchor = GridBagConstraints.NORTHEAST;
+        headersLabelC.insets = new Insets(6, 0, 0, 6);
+        panel.add(new JLabel("Extra headers:"), headersLabelC);
+
+        GridBagConstraints headersFieldC = rowConstraints(5);
+        headersFieldC.gridx = 1;
+        headersFieldC.gridwidth = GridBagConstraints.REMAINDER;
+        headersFieldC.fill = GridBagConstraints.HORIZONTAL;
+        headersFieldC.weightx = 1.0;
+        headersFieldC.insets = new Insets(4, 0, 2, 0);
+        panel.add(headersScroll, headersFieldC);
+
+        GridBagConstraints headersHintC = rowConstraints(6);
+        headersHintC.gridx = 1;
+        headersHintC.gridwidth = GridBagConstraints.REMAINDER;
+        headersHintC.fill = GridBagConstraints.HORIZONTAL;
+        headersHintC.weightx = 1.0;
+        headersHintC.insets = new Insets(0, 0, 2, 0);
+        JLabel hint = new JLabel("One per line, 'Name: Value'. Overrides auth fields on collision.");
+        hint.setForeground(UIManager.getColor("Label.disabledForeground"));
+        panel.add(hint, headersHintC);
+
+        // Wire field listeners for capture + preview refresh.
         ActionListener captureAndRefresh = e -> {
             captureActiveIdentity();
             updateRequestPreview();
@@ -562,36 +632,43 @@ public class OpenAPIBifrostTab extends JPanel {
         return panel;
     }
 
-    private JPanel buildIdentityRow() {
-        JPanel row = new JPanel(new FlowLayout(FlowLayout.LEFT, 5, 2));
-        row.add(new JLabel("Identity:"));
+    /** GridBagConstraints preset for a standard form row. */
+    private static GridBagConstraints rowConstraints(int gridy) {
+        GridBagConstraints c = new GridBagConstraints();
+        c.gridy = gridy;
+        c.insets = new Insets(3, 0, 3, 6);
+        c.anchor = GridBagConstraints.WEST;
+        return c;
+    }
 
-        identityDropdown = new JComboBox<>();
-        identityDropdown.setToolTipText("Switch between named auth configurations. Each stores its own bearer/API key/basic/cookies.");
-        refreshIdentityDropdown();
-        identityDropdown.addActionListener(e -> {
-            if (suppressCapture) return;
-            int selected = identityDropdown.getSelectedIndex();
-            if (selected < 0 || selected == identityStore.activeIndex()) return;
-            captureActiveIdentity();
-            identityStore.setActive(selected);
-            loadActiveIdentityIntoFields();
-        });
-        row.add(identityDropdown);
+    /**
+     * Adds a label-in-column-0 + components-in-column-1+ row to a GridBagLayout container.
+     * The first trailing component gets weightx=1.0 so it absorbs horizontal resize; later
+     * trailing components (e.g. buttons) hug the right side at their preferred width.
+     */
+    private static void addFormRow(JPanel container, int gridy, String labelText, java.awt.Component... fields) {
+        GridBagConstraints labelC = rowConstraints(gridy);
+        labelC.gridx = 0;
+        labelC.anchor = GridBagConstraints.EAST;
+        JLabel lbl = new JLabel(labelText);
+        container.add(lbl, labelC);
 
-        JButton newBtn = new JButton("New...");
-        newBtn.addActionListener(e -> doNewIdentity());
-        row.add(newBtn);
-
-        JButton renameBtn = new JButton("Rename...");
-        renameBtn.addActionListener(e -> doRenameIdentity());
-        row.add(renameBtn);
-
-        JButton deleteBtn = new JButton("Delete");
-        deleteBtn.addActionListener(e -> doDeleteIdentity());
-        row.add(deleteBtn);
-
-        return row;
+        for (int i = 0; i < fields.length; i++) {
+            GridBagConstraints fc = rowConstraints(gridy);
+            fc.gridx = i + 1;
+            if (i == 0) {
+                fc.fill = GridBagConstraints.HORIZONTAL;
+                fc.weightx = 1.0;
+            } else {
+                fc.fill = GridBagConstraints.NONE;
+                fc.weightx = 0;
+            }
+            if (i == fields.length - 1) {
+                fc.gridwidth = GridBagConstraints.REMAINDER;
+                fc.insets = new Insets(3, 0, 3, 0);
+            }
+            container.add(fields[i], fc);
+        }
     }
 
     private void refreshIdentityDropdown() {
