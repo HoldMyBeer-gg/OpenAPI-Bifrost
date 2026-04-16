@@ -158,7 +158,7 @@ public class OpenAPIBifrostTab extends JPanel {
         topScroll.setHorizontalScrollBarPolicy(ScrollPaneConstants.HORIZONTAL_SCROLLBAR_NEVER);
         topScroll.setVerticalScrollBarPolicy(ScrollPaneConstants.VERTICAL_SCROLLBAR_AS_NEEDED);
         topScroll.setBorder(BorderFactory.createEmptyBorder());
-        topScroll.getViewport().setPreferredSize(new Dimension(0, 280));
+        topScroll.getViewport().setPreferredSize(new Dimension(0, 420));
         add(topScroll, BorderLayout.NORTH);
 
         // Filter row and table/editor
@@ -284,9 +284,18 @@ public class OpenAPIBifrostTab extends JPanel {
 
     private void loadFromUrl(String url) {
         try {
-            var response = api.http().sendRequest(HttpRequest.httpRequestFromUrl(url));
+            HttpRequest req = applyAuthToFetch(HttpRequest.httpRequestFromUrl(url), getAuthConfig());
+            var response = api.http().sendRequest(req);
             var httpResponse = response.response();
             if (httpResponse == null) throw new IOException("No response");
+            short status = httpResponse.statusCode();
+            if (status < 200 || status >= 300) {
+                String msg = "Spec fetch returned HTTP " + status
+                        + (status == 401 || status == 403 ? " — check your auth / Extra Headers" : "");
+                logging.logToError(msg);
+                SwingUtilities.invokeLater(() -> fallbackToRawPasteOrSetError(msg));
+                return;
+            }
             byte[] body = httpResponse.body().getBytes();
             String content = new String(body, StandardCharsets.UTF_8);
             parseInBackground(content, url);
@@ -294,6 +303,38 @@ public class OpenAPIBifrostTab extends JPanel {
             logging.logToError("Failed to load URL: " + e.getMessage());
             SwingUtilities.invokeLater(() -> fallbackToRawPasteOrSetError("Unable to load from URL: " + e.getMessage()));
         }
+    }
+
+    /**
+     * Applies the active AuthConfig to an HttpRequest used for fetching the spec itself.
+     * Mirrors RequestGenerator's header-injection logic but targets a Montoya HttpRequest
+     * rather than raw bytes.
+     */
+    private HttpRequest applyAuthToFetch(HttpRequest req, AuthConfig auth) {
+        if (auth == null || auth.isEmpty()) return req;
+        if (auth.hasBearer()) {
+            req = req.withAddedHeader("Authorization", "Bearer " + auth.bearerToken());
+        }
+        if (auth.hasBasic()) {
+            req = req.withAddedHeader("Authorization", auth.basicAuthorizationHeaderValue());
+        }
+        if (auth.hasApiKey()) {
+            switch (auth.apiKeyLocation()) {
+                case HEADER:
+                    req = req.withAddedHeader(auth.apiKeyName(), auth.apiKeyValue());
+                    break;
+                case COOKIE:
+                    req = req.withAddedHeader("Cookie", auth.apiKeyName() + "=" + auth.apiKeyValue());
+                    break;
+                case QUERY:
+                    // Query-string API keys are endpoint-specific; not applied to the spec fetch.
+                    break;
+            }
+        }
+        for (AuthConfig.HeaderPair h : auth.extraHeaders()) {
+            req = req.withAddedHeader(h.name(), h.value());
+        }
+        return req;
     }
 
     private void fallbackToRawPasteOrSetError(String errorMsg) {
@@ -425,15 +466,22 @@ public class OpenAPIBifrostTab extends JPanel {
         basicRow.add(basicPassField);
         panel.add(basicRow);
 
-        JPanel headersRow = new JPanel(new BorderLayout(5, 2));
+        JPanel headersRow = new JPanel();
+        headersRow.setLayout(new BoxLayout(headersRow, BoxLayout.Y_AXIS));
         headersRow.setBorder(new EmptyBorder(2, 5, 2, 5));
-        headersRow.add(new JLabel("Extra headers (one per line, 'Name: Value' — overrides auth on collision):"), BorderLayout.NORTH);
+        JLabel headersLabel = new JLabel("Extra headers (one per line, 'Name: Value' — overrides auth on collision):");
+        headersLabel.setAlignmentX(Component.LEFT_ALIGNMENT);
+        headersRow.add(headersLabel);
         extraHeadersArea = new JTextArea(3, 60);
         extraHeadersArea.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 12));
-        extraHeadersArea.setToolTipText("Example: X-Tenant: acme\\nX-Forwarded-For: 127.0.0.1");
+        extraHeadersArea.setToolTipText("Example: X-Tenant: acme  (or paste 'Cookie: session=...' for session-based APIs)");
         JScrollPane headersScroll = new JScrollPane(extraHeadersArea);
         headersScroll.setBorder(new LineBorder(UIManager.getColor("Component.borderColor"), 1));
-        headersRow.add(headersScroll, BorderLayout.CENTER);
+        headersScroll.setAlignmentX(Component.LEFT_ALIGNMENT);
+        headersScroll.setPreferredSize(new Dimension(600, 70));
+        headersScroll.setMaximumSize(new Dimension(Integer.MAX_VALUE, 70));
+        headersRow.add(headersScroll);
+        headersRow.setMaximumSize(new Dimension(Integer.MAX_VALUE, 100));
         panel.add(headersRow);
 
         ActionListener refreshPreview = e -> updateRequestPreview();
