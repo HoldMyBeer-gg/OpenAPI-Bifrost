@@ -53,6 +53,7 @@ public class OpenAPIBifrostTab extends JPanel {
     private final RequestGenerator requestGenerator = new RequestGenerator();
     private final EndpointTableModel tableModel = new EndpointTableModel();
     private final ExecutorService executor = Executors.newSingleThreadExecutor();
+    private final IdentityStore identityStore;
 
     private JTextField urlOrPathField;
     private JTextArea rawSpecArea;
@@ -64,6 +65,7 @@ public class OpenAPIBifrostTab extends JPanel {
     private JTextField basicUserField;
     private JPasswordField basicPassField;
     private JTextArea extraHeadersArea;
+    private JComboBox<String> identityDropdown;
     private JTextField filterField;
     private JLabel filterHitsLabel;
     private JTable endpointTable;
@@ -72,12 +74,26 @@ public class OpenAPIBifrostTab extends JPanel {
     private JLabel specAuthSummaryLabel;
     private String defaultServer = "";
     private boolean hasScanner = false;
+    /** Suppresses capture-on-change when we're programmatically loading fields. */
+    private boolean suppressCapture = false;
 
     public OpenAPIBifrostTab(MontoyaApi api) {
         this.api = api;
         this.logging = api.logging();
         this.hasScanner = detectScannerSupport(api);
+        this.identityStore = new IdentityStore(new MontoyaPrefsBackend(api.persistence().preferences()));
         buildUi();
+        loadActiveIdentityIntoFields();
+    }
+
+    /** Test-only constructor that takes an explicit IdentityStore (skips Montoya wiring). */
+    OpenAPIBifrostTab(MontoyaApi api, IdentityStore identityStore) {
+        this.api = api;
+        this.logging = api.logging();
+        this.hasScanner = detectScannerSupport(api);
+        this.identityStore = identityStore;
+        buildUi();
+        loadActiveIdentityIntoFields();
     }
 
     private static boolean detectScannerSupport(MontoyaApi api) {
@@ -127,7 +143,13 @@ public class OpenAPIBifrostTab extends JPanel {
         JPanel overrideRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 5, 5));
         overrideRow.add(new JLabel("Base URL override (optional):"));
         baseUrlOverrideField = new JTextField(40);
-        baseUrlOverrideField.setToolTipText("Override server URL from spec (e.g. https://api.target.com)");
+        baseUrlOverrideField.setToolTipText("Override server URL from spec (e.g. https://api.target.com). Stored per identity.");
+        baseUrlOverrideField.addFocusListener(new FocusAdapter() {
+            @Override public void focusLost(FocusEvent e) {
+                captureActiveIdentity();
+                updateRequestPreview();
+            }
+        });
         overrideRow.add(baseUrlOverrideField);
         southPanel.add(overrideRow);
 
@@ -401,6 +423,7 @@ public class OpenAPIBifrostTab extends JPanel {
         tableModel.setFilter(filterField.getText());
         updateFilterHits();
         updateRequestPreview();
+        captureActiveIdentity();
 
         if (!result.getMessages().isEmpty()) {
             for (String m : result.getMessages()) {
@@ -458,6 +481,8 @@ public class OpenAPIBifrostTab extends JPanel {
         panel.setLayout(new BoxLayout(panel, BoxLayout.Y_AXIS));
         panel.setBorder(BorderFactory.createTitledBorder("Authentication (applied to all generated requests)"));
 
+        panel.add(buildIdentityRow());
+
         specAuthSummaryLabel = new JLabel(" ");
         specAuthSummaryLabel.setForeground(UIManager.getColor("Label.disabledForeground"));
         specAuthSummaryLabel.setBorder(new EmptyBorder(0, 5, 0, 5));
@@ -510,18 +535,161 @@ public class OpenAPIBifrostTab extends JPanel {
         headersRow.setMaximumSize(new Dimension(Integer.MAX_VALUE, 100));
         panel.add(headersRow);
 
-        ActionListener refreshPreview = e -> updateRequestPreview();
-        bearerField.addActionListener(refreshPreview);
-        apiKeyValueField.addActionListener(refreshPreview);
-        apiKeyNameField.addActionListener(refreshPreview);
-        apiKeyLocationCombo.addActionListener(refreshPreview);
-        basicUserField.addActionListener(refreshPreview);
-        basicPassField.addActionListener(refreshPreview);
-        extraHeadersArea.addFocusListener(new FocusAdapter() {
-            @Override public void focusLost(FocusEvent e) { updateRequestPreview(); }
-        });
+        ActionListener captureAndRefresh = e -> {
+            captureActiveIdentity();
+            updateRequestPreview();
+        };
+        bearerField.addActionListener(captureAndRefresh);
+        apiKeyValueField.addActionListener(captureAndRefresh);
+        apiKeyNameField.addActionListener(captureAndRefresh);
+        apiKeyLocationCombo.addActionListener(captureAndRefresh);
+        basicUserField.addActionListener(captureAndRefresh);
+        basicPassField.addActionListener(captureAndRefresh);
+
+        FocusAdapter captureOnBlur = new FocusAdapter() {
+            @Override public void focusLost(FocusEvent e) {
+                captureActiveIdentity();
+                updateRequestPreview();
+            }
+        };
+        bearerField.addFocusListener(captureOnBlur);
+        apiKeyValueField.addFocusListener(captureOnBlur);
+        apiKeyNameField.addFocusListener(captureOnBlur);
+        basicUserField.addFocusListener(captureOnBlur);
+        basicPassField.addFocusListener(captureOnBlur);
+        extraHeadersArea.addFocusListener(captureOnBlur);
 
         return panel;
+    }
+
+    private JPanel buildIdentityRow() {
+        JPanel row = new JPanel(new FlowLayout(FlowLayout.LEFT, 5, 2));
+        row.add(new JLabel("Identity:"));
+
+        identityDropdown = new JComboBox<>();
+        identityDropdown.setToolTipText("Switch between named auth configurations. Each stores its own bearer/API key/basic/cookies.");
+        refreshIdentityDropdown();
+        identityDropdown.addActionListener(e -> {
+            if (suppressCapture) return;
+            int selected = identityDropdown.getSelectedIndex();
+            if (selected < 0 || selected == identityStore.activeIndex()) return;
+            captureActiveIdentity();
+            identityStore.setActive(selected);
+            loadActiveIdentityIntoFields();
+        });
+        row.add(identityDropdown);
+
+        JButton newBtn = new JButton("New...");
+        newBtn.addActionListener(e -> doNewIdentity());
+        row.add(newBtn);
+
+        JButton renameBtn = new JButton("Rename...");
+        renameBtn.addActionListener(e -> doRenameIdentity());
+        row.add(renameBtn);
+
+        JButton deleteBtn = new JButton("Delete");
+        deleteBtn.addActionListener(e -> doDeleteIdentity());
+        row.add(deleteBtn);
+
+        return row;
+    }
+
+    private void refreshIdentityDropdown() {
+        boolean prevSuppress = suppressCapture;
+        suppressCapture = true;
+        try {
+            identityDropdown.removeAllItems();
+            for (Identity id : identityStore.identities()) {
+                identityDropdown.addItem(id.name());
+            }
+            identityDropdown.setSelectedIndex(identityStore.activeIndex());
+        } finally {
+            suppressCapture = prevSuppress;
+        }
+    }
+
+    /** Writes the active identity's stored values into the auth form fields. */
+    void loadActiveIdentityIntoFields() {
+        boolean prevSuppress = suppressCapture;
+        suppressCapture = true;
+        try {
+            Identity active = identityStore.active();
+            AuthConfig cfg = active.authConfig();
+            bearerField.setText(cfg.bearerToken());
+            apiKeyValueField.setText(cfg.apiKeyValue());
+            apiKeyNameField.setText(cfg.apiKeyName().isEmpty() ? "X-API-Key" : cfg.apiKeyName());
+            apiKeyLocationCombo.setSelectedItem(cfg.apiKeyLocation());
+            basicUserField.setText(cfg.basicUser());
+            basicPassField.setText(cfg.basicPass());
+            StringBuilder sb = new StringBuilder();
+            for (AuthConfig.HeaderPair h : cfg.extraHeaders()) {
+                if (sb.length() > 0) sb.append('\n');
+                sb.append(h.name()).append(": ").append(h.value());
+            }
+            extraHeadersArea.setText(sb.toString());
+            if (!active.baseUrlOverride().isEmpty()) {
+                baseUrlOverrideField.setText(active.baseUrlOverride());
+            }
+        } finally {
+            suppressCapture = prevSuppress;
+        }
+        updateRequestPreview();
+    }
+
+    /** Snapshots the current auth fields into the active identity and persists. */
+    void captureActiveIdentity() {
+        if (suppressCapture) return;
+        Identity current = identityStore.active();
+        Identity snapshot = new Identity(current.name(), getAuthConfig(), getBaseUrlOverride() != null ? getBaseUrlOverride() : "");
+        identityStore.replaceActive(snapshot);
+    }
+
+    private void doNewIdentity() {
+        String name = (String) JOptionPane.showInputDialog(
+                this, "Name for new identity:", "New identity",
+                JOptionPane.PLAIN_MESSAGE, null, null, "identity-" + (identityStore.size() + 1));
+        if (name == null || name.isBlank()) return;
+        try {
+            captureActiveIdentity();
+            identityStore.add(Identity.empty(name.trim()));
+            refreshIdentityDropdown();
+            loadActiveIdentityIntoFields();
+            setStatus("Added identity '" + name.trim() + "'. Fill in its auth fields.");
+        } catch (IllegalArgumentException ex) {
+            JOptionPane.showMessageDialog(this, ex.getMessage(), "Cannot add identity", JOptionPane.WARNING_MESSAGE);
+        }
+    }
+
+    private void doRenameIdentity() {
+        Identity current = identityStore.active();
+        String name = (String) JOptionPane.showInputDialog(
+                this, "New name for '" + current.name() + "':", "Rename identity",
+                JOptionPane.PLAIN_MESSAGE, null, null, current.name());
+        if (name == null || name.isBlank() || name.equals(current.name())) return;
+        try {
+            identityStore.rename(identityStore.activeIndex(), name.trim());
+            refreshIdentityDropdown();
+            setStatus("Renamed to '" + name.trim() + "'.");
+        } catch (IllegalArgumentException ex) {
+            JOptionPane.showMessageDialog(this, ex.getMessage(), "Cannot rename", JOptionPane.WARNING_MESSAGE);
+        }
+    }
+
+    private void doDeleteIdentity() {
+        if (identityStore.size() <= 1) {
+            JOptionPane.showMessageDialog(this, "At least one identity must exist.",
+                    "Cannot delete", JOptionPane.WARNING_MESSAGE);
+            return;
+        }
+        Identity current = identityStore.active();
+        int choice = JOptionPane.showConfirmDialog(this,
+                "Delete identity '" + current.name() + "'? This cannot be undone.",
+                "Delete identity", JOptionPane.YES_NO_OPTION, JOptionPane.WARNING_MESSAGE);
+        if (choice != JOptionPane.YES_OPTION) return;
+        identityStore.remove(identityStore.activeIndex());
+        refreshIdentityDropdown();
+        loadActiveIdentityIntoFields();
+        setStatus("Deleted identity '" + current.name() + "'.");
     }
 
     /**
@@ -626,6 +794,7 @@ public class OpenAPIBifrostTab extends JPanel {
                 rawSpecArea.setText(body);
                 setStatus("Imported auth + detected OpenAPI spec in response body — click Parse.");
                 updateRequestPreview();
+                captureActiveIdentity();
                 return;
             }
         }
@@ -635,11 +804,13 @@ public class OpenAPIBifrostTab extends JPanel {
             urlOrPathField.setText(fullUrl);
             setStatus("Imported auth + spec URL — click Load.");
             updateRequestPreview();
+            captureActiveIdentity();
             return;
         }
 
         setStatus("Imported auth from request. Load a spec URL or paste a spec to continue.");
         updateRequestPreview();
+        captureActiveIdentity();
     }
 
     private static String safeUrl(HttpRequest req) {
