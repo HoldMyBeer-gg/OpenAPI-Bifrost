@@ -57,6 +57,7 @@ public class OpenAPIBifrostTab extends JPanel {
     private JComboBox<AuthConfig.ApiKeyLocation> apiKeyLocationCombo;
     private JTextField basicUserField;
     private JPasswordField basicPassField;
+    private JTextArea extraHeadersArea;
     private JTextField filterField;
     private JLabel filterHitsLabel;
     private JTable endpointTable;
@@ -424,6 +425,17 @@ public class OpenAPIBifrostTab extends JPanel {
         basicRow.add(basicPassField);
         panel.add(basicRow);
 
+        JPanel headersRow = new JPanel(new BorderLayout(5, 2));
+        headersRow.setBorder(new EmptyBorder(2, 5, 2, 5));
+        headersRow.add(new JLabel("Extra headers (one per line, 'Name: Value' — overrides auth on collision):"), BorderLayout.NORTH);
+        extraHeadersArea = new JTextArea(3, 60);
+        extraHeadersArea.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 12));
+        extraHeadersArea.setToolTipText("Example: X-Tenant: acme\\nX-Forwarded-For: 127.0.0.1");
+        JScrollPane headersScroll = new JScrollPane(extraHeadersArea);
+        headersScroll.setBorder(new LineBorder(UIManager.getColor("Component.borderColor"), 1));
+        headersRow.add(headersScroll, BorderLayout.CENTER);
+        panel.add(headersRow);
+
         ActionListener refreshPreview = e -> updateRequestPreview();
         bearerField.addActionListener(refreshPreview);
         apiKeyValueField.addActionListener(refreshPreview);
@@ -431,6 +443,9 @@ public class OpenAPIBifrostTab extends JPanel {
         apiKeyLocationCombo.addActionListener(refreshPreview);
         basicUserField.addActionListener(refreshPreview);
         basicPassField.addActionListener(refreshPreview);
+        extraHeadersArea.addFocusListener(new FocusAdapter() {
+            @Override public void focusLost(FocusEvent e) { updateRequestPreview(); }
+        });
 
         return panel;
     }
@@ -442,7 +457,8 @@ public class OpenAPIBifrostTab extends JPanel {
                 apiKeyNameField.getText(),
                 (AuthConfig.ApiKeyLocation) apiKeyLocationCombo.getSelectedItem(),
                 basicUserField.getText(),
-                new String(basicPassField.getPassword())
+                new String(basicPassField.getPassword()),
+                AuthConfig.parseExtraHeaders(extraHeadersArea.getText())
         );
     }
 

@@ -208,4 +208,28 @@ class RequestGeneratorTest {
         String req = new String(generator.buildRequestBytes(ep, null, null), StandardCharsets.UTF_8);
         assertFalse(req.contains("Authorization:"));
     }
+
+    @Test
+    void buildRequestBytes_extraHeaders_appendedInOrder() {
+        var ep = new ApiEndpoint(1, "https", "GET", "https://api.test.com", "/users", List.of(), "");
+        AuthConfig auth = new AuthConfig(null, null, null, null, null, null,
+                AuthConfig.parseExtraHeaders("X-Tenant: acme\nX-Trace-Id: abc"));
+        String req = new String(generator.buildRequestBytes(ep, null, auth), StandardCharsets.UTF_8);
+        int tenantIdx = req.indexOf("X-Tenant: acme\r\n");
+        int traceIdx = req.indexOf("X-Trace-Id: abc\r\n");
+        assertTrue(tenantIdx > 0);
+        assertTrue(traceIdx > tenantIdx);
+    }
+
+    @Test
+    void buildRequestBytes_extraHeaders_appendedAfterAuth() {
+        var ep = new ApiEndpoint(1, "https", "GET", "https://api.test.com", "/users", List.of(), "");
+        AuthConfig auth = new AuthConfig("tok", null, null, null, null, null,
+                AuthConfig.parseExtraHeaders("Authorization: override-me"));
+        String req = new String(generator.buildRequestBytes(ep, null, auth), StandardCharsets.UTF_8);
+        int firstAuth = req.indexOf("Authorization: Bearer tok");
+        int overrideAuth = req.indexOf("Authorization: override-me");
+        assertTrue(firstAuth > 0);
+        assertTrue(overrideAuth > firstAuth);
+    }
 }

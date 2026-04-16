@@ -1,16 +1,21 @@
 package burp.openapibifrost;
 
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 import java.util.Base64;
+import java.util.Collections;
+import java.util.List;
 
 /**
  * Immutable auth credentials applied to every generated request. Supports bearer
- * tokens, API keys (header/query/cookie), and HTTP Basic. An empty instance
- * adds no auth.
+ * tokens, API keys (header/query/cookie), HTTP Basic, and arbitrary extra
+ * headers. An empty instance adds no auth.
  */
 public final class AuthConfig {
 
     public enum ApiKeyLocation { HEADER, QUERY, COOKIE }
+
+    public record HeaderPair(String name, String value) {}
 
     private final String bearerToken;
     private final String apiKeyValue;
@@ -18,20 +23,51 @@ public final class AuthConfig {
     private final ApiKeyLocation apiKeyLocation;
     private final String basicUser;
     private final String basicPass;
+    private final List<HeaderPair> extraHeaders;
 
     public AuthConfig(String bearerToken,
                       String apiKeyValue, String apiKeyName, ApiKeyLocation apiKeyLocation,
                       String basicUser, String basicPass) {
+        this(bearerToken, apiKeyValue, apiKeyName, apiKeyLocation, basicUser, basicPass, null);
+    }
+
+    public AuthConfig(String bearerToken,
+                      String apiKeyValue, String apiKeyName, ApiKeyLocation apiKeyLocation,
+                      String basicUser, String basicPass,
+                      List<HeaderPair> extraHeaders) {
         this.bearerToken = stripWhitespace(bearerToken);
         this.apiKeyValue = trim(apiKeyValue);
         this.apiKeyName = trim(apiKeyName);
         this.apiKeyLocation = apiKeyLocation != null ? apiKeyLocation : ApiKeyLocation.HEADER;
         this.basicUser = trim(basicUser);
         this.basicPass = basicPass != null ? basicPass : "";
+        this.extraHeaders = extraHeaders != null
+                ? Collections.unmodifiableList(new ArrayList<>(extraHeaders))
+                : Collections.emptyList();
     }
 
     public static AuthConfig empty() {
-        return new AuthConfig(null, null, null, null, null, null);
+        return new AuthConfig(null, null, null, null, null, null, null);
+    }
+
+    /**
+     * Parses a block of raw header lines (one per line, {@code Name: Value}) into
+     * a list of header pairs. Blank lines and lines without a colon are dropped.
+     */
+    public static List<HeaderPair> parseExtraHeaders(String rawText) {
+        if (rawText == null || rawText.isBlank()) return Collections.emptyList();
+        List<HeaderPair> result = new ArrayList<>();
+        for (String line : rawText.split("\\r?\\n")) {
+            String trimmed = line.trim();
+            if (trimmed.isEmpty()) continue;
+            int idx = trimmed.indexOf(':');
+            if (idx <= 0) continue;
+            String name = trimmed.substring(0, idx).trim();
+            String value = trimmed.substring(idx + 1).replaceFirst("^ ", "");
+            if (name.isEmpty()) continue;
+            result.add(new HeaderPair(name, value));
+        }
+        return Collections.unmodifiableList(result);
     }
 
     public boolean hasBearer() {
@@ -47,7 +83,7 @@ public final class AuthConfig {
     }
 
     public boolean isEmpty() {
-        return !hasBearer() && !hasApiKey() && !hasBasic();
+        return !hasBearer() && !hasApiKey() && !hasBasic() && extraHeaders.isEmpty();
     }
 
     public String bearerToken() { return bearerToken; }
@@ -56,6 +92,7 @@ public final class AuthConfig {
     public ApiKeyLocation apiKeyLocation() { return apiKeyLocation; }
     public String basicUser() { return basicUser; }
     public String basicPass() { return basicPass; }
+    public List<HeaderPair> extraHeaders() { return extraHeaders; }
 
     public String basicAuthorizationHeaderValue() {
         String raw = basicUser + ":" + basicPass;

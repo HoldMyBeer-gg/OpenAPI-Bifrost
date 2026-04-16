@@ -54,4 +54,43 @@ class AuthConfigTest {
                 StandardCharsets.UTF_8);
         assertEquals("admin:", decoded);
     }
+
+    @Test
+    void parseExtraHeaders_splitsOnColonAndDropsLeadingSpace() {
+        var headers = AuthConfig.parseExtraHeaders("X-Tenant: acme\nX-Trace-Id:abc123");
+        assertEquals(2, headers.size());
+        assertEquals("X-Tenant", headers.get(0).name());
+        assertEquals("acme", headers.get(0).value());
+        assertEquals("X-Trace-Id", headers.get(1).name());
+        assertEquals("abc123", headers.get(1).value());
+    }
+
+    @Test
+    void parseExtraHeaders_preservesInternalColons() {
+        var headers = AuthConfig.parseExtraHeaders("X-Forwarded-For: 10.0.0.1:8080");
+        assertEquals("10.0.0.1:8080", headers.get(0).value());
+    }
+
+    @Test
+    void parseExtraHeaders_ignoresBlanksAndMalformed() {
+        var headers = AuthConfig.parseExtraHeaders("\n\nX-Good: ok\ninvalidline\n:novalue\n   \nX-Also: yes\n");
+        assertEquals(2, headers.size());
+        assertEquals("X-Good", headers.get(0).name());
+        assertEquals("X-Also", headers.get(1).name());
+    }
+
+    @Test
+    void parseExtraHeaders_nullOrBlank_returnsEmpty() {
+        assertTrue(AuthConfig.parseExtraHeaders(null).isEmpty());
+        assertTrue(AuthConfig.parseExtraHeaders("").isEmpty());
+        assertTrue(AuthConfig.parseExtraHeaders("   \n  ").isEmpty());
+    }
+
+    @Test
+    void extraHeaders_makeConfigNonEmpty() {
+        AuthConfig a = new AuthConfig(null, null, null, null, null, null,
+                AuthConfig.parseExtraHeaders("X-Foo: bar"));
+        assertFalse(a.isEmpty());
+        assertEquals(1, a.extraHeaders().size());
+    }
 }

@@ -95,8 +95,10 @@ public class RequestGenerator {
     }
 
     /**
-     * Appends auth headers. Bearer/Basic take precedence if both set (Basic wins last-write).
-     * API key header/cookie live on their own line; query keys are handled in the query string.
+     * Appends auth and user-supplied headers. Bearer/Basic take precedence if both set
+     * (Basic wins last-write). API key header/cookie live on their own line; query keys
+     * are handled in the query string. User-supplied extra headers are appended last so
+     * they override earlier headers on collision.
      */
     private void appendAuthHeaders(StringBuilder request, AuthConfig auth) {
         if (auth.hasBearer()) {
@@ -117,6 +119,9 @@ public class RequestGenerator {
                     // Already applied to query string.
                     break;
             }
+        }
+        for (AuthConfig.HeaderPair h : auth.extraHeaders()) {
+            request.append(h.name()).append(": ").append(h.value()).append("\r\n");
         }
     }
 
