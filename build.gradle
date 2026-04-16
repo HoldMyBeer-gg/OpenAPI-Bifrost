@@ -57,7 +57,10 @@ jacocoTestReport {
             '**/OpenAPIBifrostExtension.class',
             '**/OpenAPIBifrostTab.class',
             '**/OpenAPIBifrostTab$*.class',
-            '**/RequestGenerator.class'
+            '**/RequestGenerator.class',
+            '**/RbacComparisonDialog.class',
+            '**/RbacComparisonDialog$*.class',
+            '**/BifrostContextMenuProvider.class'
         ]
         classDirectories.setFrom(files(classDirectories.files.collect {
             fileTree(dir: it, exclude: exclusion)
@@ -71,7 +74,10 @@ jacocoTestCoverageVerification {
             '**/OpenAPIBifrostExtension.class',
             '**/OpenAPIBifrostTab.class',
             '**/OpenAPIBifrostTab$*.class',
-            '**/RequestGenerator.class'
+            '**/RequestGenerator.class',
+            '**/RbacComparisonDialog.class',
+            '**/RbacComparisonDialog$*.class',
+            '**/BifrostContextMenuProvider.class'
         ]
         classDirectories.setFrom(files(classDirectories.files.collect {
             fileTree(dir: it, exclude: exclusion)

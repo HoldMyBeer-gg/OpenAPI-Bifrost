@@ -848,9 +848,13 @@ public class OpenAPIBifrostTab extends JPanel {
         repeaterItem.addActionListener(e -> doSendToRepeater());
         JMenuItem intruderItem = new JMenuItem("Send to Intruder");
         intruderItem.addActionListener(e -> doSendToIntruder());
+        JMenuItem compareItem = new JMenuItem("Compare across identities...");
+        compareItem.addActionListener(e -> doCompareIdentities());
         openapiMenu.add(scanItem);
         openapiMenu.add(repeaterItem);
         openapiMenu.add(intruderItem);
+        openapiMenu.addSeparator();
+        openapiMenu.add(compareItem);
         popup.add(openapiMenu);
 
         endpointTable.setComponentPopupMenu(popup);
@@ -989,6 +993,67 @@ public class OpenAPIBifrostTab extends JPanel {
             logging.logToError("Send to Intruder failed: " + ex.getMessage());
             setStatus("Intruder failed: " + ex.getMessage());
         }
+    }
+
+    private void doCompareIdentities() {
+        int[] rows = selectedModelRows();
+        if (rows.length == 0) {
+            setStatus("Select one or more endpoints to compare.");
+            return;
+        }
+        List<ApiEndpoint> selected = tableModel.getSelectedEndpoints(rows);
+        if (identityStore.size() < 2) {
+            JOptionPane.showMessageDialog(this,
+                    "Create at least two identities (Auth panel → 'New...') to compare access between them.",
+                    "Nothing to compare", JOptionPane.INFORMATION_MESSAGE);
+            return;
+        }
+
+        // Capture the active identity's latest fields before running — otherwise just-typed
+        // tokens wouldn't reach the runner.
+        captureActiveIdentity();
+
+        List<Identity> picked = pickIdentitiesForCompare();
+        if (picked == null || picked.size() < 2) return;
+
+        // Persist the latest state once more in case the picker dialog stole focus.
+        captureActiveIdentity();
+
+        RbacHttpSender sender = new MontoyaRbacHttpSender(api.http(), requestGenerator);
+        Frame parent = api.userInterface().swingUtils().suiteFrame();
+        RbacComparisonDialog dialog = new RbacComparisonDialog(
+                parent, api, selected, picked, sender, 6);
+        dialog.setVisible(true);
+        dialog.startRun();
+        setStatus("RBAC comparison started: " + selected.size() + " endpoints × " + picked.size() + " identities.");
+    }
+
+    /** Puts a checkbox next to every identity name; returns those the user enabled, in priority order. */
+    private List<Identity> pickIdentitiesForCompare() {
+        List<Identity> all = identityStore.identities();
+        JPanel panel = new JPanel();
+        panel.setLayout(new BoxLayout(panel, BoxLayout.Y_AXIS));
+        panel.add(new JLabel("Run each selected endpoint with each ticked identity. Order (top→bottom) is priority ascending."));
+        panel.add(Box.createVerticalStrut(6));
+        List<JCheckBox> boxes = new ArrayList<>();
+        for (Identity id : all) {
+            JCheckBox cb = new JCheckBox(id.name(), true);
+            boxes.add(cb);
+            panel.add(cb);
+        }
+        int choice = JOptionPane.showConfirmDialog(this, panel,
+                "Compare identities", JOptionPane.OK_CANCEL_OPTION, JOptionPane.PLAIN_MESSAGE);
+        if (choice != JOptionPane.OK_OPTION) return null;
+        List<Identity> picked = new ArrayList<>();
+        for (int i = 0; i < all.size(); i++) {
+            if (boxes.get(i).isSelected()) picked.add(all.get(i));
+        }
+        if (picked.size() < 2) {
+            JOptionPane.showMessageDialog(this, "Pick at least two identities to compare.",
+                    "Too few identities", JOptionPane.WARNING_MESSAGE);
+            return null;
+        }
+        return picked;
     }
 
     private void setStatus(String msg) {
