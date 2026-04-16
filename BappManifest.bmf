@@ -7,6 +7,6 @@ SerialVersion: 1
 MinPlatformVersion: 0
 ProOnly: False
 Author: jabberwock
-ShortDescription: Alternative OpenAPI spec loader: import via URL, file, paste, or drag-and-drop, then bridge endpoints to Scanner, Repeater, or Intruder with auto-marked insertion points.
+ShortDescription: Load OpenAPI specs and compare authorization across multiple identities in a single matrix. Imports auth from any Proxy request, runs endpoints in parallel with named identities, flags access divergence (TIERED vs broken).
 EntryPoint: build/libs/OpenAPI-Bifrost-1.0.jar
 BuildCommand: ./gradlew build
