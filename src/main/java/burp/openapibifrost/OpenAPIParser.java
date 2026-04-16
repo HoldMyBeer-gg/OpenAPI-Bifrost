@@ -1,4 +1,4 @@
-package burp.openapilng;
+package burp.openapibifrost;
 
 import io.swagger.v3.oas.models.OpenAPI;
 import io.swagger.v3.oas.models.Operation;

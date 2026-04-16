@@ -3,7 +3,7 @@ plugins {
     id 'jacoco'
 }
 
-group = 'burp.openapilng'
+group = 'burp.openapibifrost'
 version = '1.0'
 
 java {
@@ -54,9 +54,9 @@ jacocoTestReport {
     }
     afterEvaluate {
         def exclusion = [
-            '**/OpenAPINGExtension.class',
-            '**/OpenAPINGTab.class',
-            '**/OpenAPINGTab$*.class',
+            '**/OpenAPIBifrostExtension.class',
+            '**/OpenAPIBifrostTab.class',
+            '**/OpenAPIBifrostTab$*.class',
             '**/RequestGenerator.class'
         ]
         classDirectories.setFrom(files(classDirectories.files.collect {
@@ -68,9 +68,9 @@ jacocoTestReport {
 jacocoTestCoverageVerification {
     afterEvaluate {
         def exclusion = [
-            '**/OpenAPINGExtension.class',
-            '**/OpenAPINGTab.class',
-            '**/OpenAPINGTab$*.class',
+            '**/OpenAPIBifrostExtension.class',
+            '**/OpenAPIBifrostTab.class',
+            '**/OpenAPIBifrostTab$*.class',
             '**/RequestGenerator.class'
         ]
         classDirectories.setFrom(files(classDirectories.files.collect {
@@ -91,10 +91,10 @@ jacocoTestCoverageVerification {
 check.dependsOn jacocoTestCoverageVerification
 
 jar {
-    archiveBaseName = 'OpenAPI-NG'
+    archiveBaseName = 'OpenAPI-Bifrost'
     duplicatesStrategy = DuplicatesStrategy.EXCLUDE
     manifest {
-        attributes 'Extension-Class': 'burp.openapilng.OpenAPINGExtension'
+        attributes 'Extension-Class': 'burp.openapibifrost.OpenAPIBifrostExtension'
     }
     from {
         configurations.runtimeClasspath.collect { it.isDirectory() ? it : zipTree(it) }

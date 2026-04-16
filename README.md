@@ -1,6 +1,6 @@
-# OpenAPI-NG
+# OpenAPI-Bifrost
 
-A next-generation Burp Suite extension for loading OpenAPI specifications and sending parsed endpoints to the Scanner, Repeater, and Intruder tools. A successor to the legacy OpenAPI Parser.
+An alternative Burp Suite extension for loading OpenAPI specifications and bridging parsed endpoints into the Scanner, Repeater, and Intruder tools. Offers a different feature set to the existing OpenAPI Parser extension — not a replacement.
 
 ## Features
 
@@ -21,7 +21,7 @@ OpenAPI 2.0 (Swagger) and OpenAPI 3.x, in JSON or YAML format.
 ## Installation
 
 1. Build the extension: `./gradlew build` (or `gradlew.bat build` on Windows)
-2. Load the JAR in Burp: **Extensions** → **Installed** → **Add** → **Extension type: Java** → select `build/libs/OpenAPI-NG-1.0.jar`
+2. Load the JAR in Burp: **Extensions** → **Installed** → **Add** → **Extension type: Java** → select `build/libs/OpenAPI-Bifrost-1.0.jar`
 
 ## Build
 

@@ -1,4 +1,4 @@
-package burp.openapilng;
+package burp.openapibifrost;
 
 import javax.swing.table.AbstractTableModel;
 import java.util.ArrayList;
@@ -7,7 +7,7 @@ import java.util.regex.Pattern;
 import java.util.regex.PatternSyntaxException;
 
 /**
- * Swing table model for the OpenAPI-NG endpoint list. Supports regex filtering with a
+ * Swing table model for the OpenAPI-Bifrost endpoint list. Supports regex filtering with a
  * maximum pattern length to mitigate ReDoS. Displays index, scheme, method, server,
  * path, parameters, and description.
  *

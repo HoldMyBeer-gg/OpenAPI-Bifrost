@@ -1,4 +1,4 @@
-package burp.openapilng;
+package burp.openapibifrost;
 
 import org.junit.jupiter.api.Test;
 

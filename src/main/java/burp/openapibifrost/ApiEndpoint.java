@@ -1,4 +1,4 @@
-package burp.openapilng;
+package burp.openapibifrost;
 
 import java.util.ArrayList;
 import java.util.List;

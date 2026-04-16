@@ -1,6 +1,7 @@
-package burp.openapilng;
+package burp.openapibifrost;
 
 import burp.api.montoya.MontoyaApi;
+import burp.api.montoya.core.BurpSuiteEdition;
 import burp.api.montoya.http.message.requests.HttpRequest;
 import burp.api.montoya.intruder.HttpRequestTemplate;
 import burp.api.montoya.logging.Logging;
@@ -25,9 +26,10 @@ import java.nio.file.Paths;
 import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 
 /**
- * Main OpenAPI-NG tab panel. Provides the UI for loading OpenAPI specs, viewing parsed
+ * Main OpenAPI-Bifrost tab panel. Provides the UI for loading OpenAPI specs, viewing parsed
  * endpoints, and sending requests to Scanner, Repeater, or Intruder.
  * <p>
  * Supports loading specs via drag-and-drop, URL, file path (including network drives),
@@ -37,7 +39,7 @@ import java.util.concurrent.Executors;
  * @since 1.0
  * Copyright (c) 2026 jabberwock
  */
-public class OpenAPINGTab extends JPanel {
+public class OpenAPIBifrostTab extends JPanel {
 
     private final MontoyaApi api;
     private final Logging logging;
@@ -57,15 +59,20 @@ public class OpenAPINGTab extends JPanel {
     private String defaultServer = "";
     private boolean hasScanner = false;
 
-    public OpenAPINGTab(MontoyaApi api) {
+    public OpenAPIBifrostTab(MontoyaApi api) {
         this.api = api;
         this.logging = api.logging();
-        try {
-            this.hasScanner = api.scanner() != null;
-        } catch (Exception e) {
-            hasScanner = false;
-        }
+        this.hasScanner = detectScannerSupport(api);
         buildUi();
+    }
+
+    private static boolean detectScannerSupport(MontoyaApi api) {
+        try {
+            BurpSuiteEdition edition = api.burpSuite().version().edition();
+            return edition == BurpSuiteEdition.PROFESSIONAL || edition == BurpSuiteEdition.ENTERPRISE_EDITION;
+        } catch (Exception e) {
+            return false;
+        }
     }
 
     private void buildUi() {
@@ -378,7 +385,7 @@ public class OpenAPINGTab extends JPanel {
 
     private void setupContextMenu() {
         JPopupMenu popup = new JPopupMenu();
-        JMenu openapiMenu = new JMenu("OpenAPI-NG");
+        JMenu openapiMenu = new JMenu("OpenAPI-Bifrost");
         JMenuItem scanItem = new JMenuItem("Actively Scan");
         scanItem.setEnabled(hasScanner);
         if (!hasScanner) {
@@ -504,5 +511,13 @@ public class OpenAPINGTab extends JPanel {
 
     public void unload() {
         executor.shutdown();
+        try {
+            if (!executor.awaitTermination(2, TimeUnit.SECONDS)) {
+                executor.shutdownNow();
+            }
+        } catch (InterruptedException e) {
+            executor.shutdownNow();
+            Thread.currentThread().interrupt();
+        }
     }
 }

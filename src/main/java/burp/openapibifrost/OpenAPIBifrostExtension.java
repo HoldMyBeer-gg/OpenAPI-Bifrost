@@ -1,10 +1,10 @@
-package burp.openapilng;
+package burp.openapibifrost;
 
 import burp.api.montoya.BurpExtension;
 import burp.api.montoya.MontoyaApi;
 
 /**
- * OpenAPI-NG extension entry point. Registers the main tab with Burp Suite and wires up
+ * OpenAPI-Bifrost extension entry point. Registers the main tab with Burp Suite and wires up
  * the unloading handler.
  * <p>
  * Load OpenAPI specs via URL, drag-and-drop, or file browse (including network drives).
@@ -14,18 +14,18 @@ import burp.api.montoya.MontoyaApi;
  * @since 1.0
  * Copyright (c) 2026 jabberwock
  */
-public class OpenAPINGExtension implements BurpExtension {
+public class OpenAPIBifrostExtension implements BurpExtension {
 
     @Override
     public void initialize(MontoyaApi api) {
-        api.extension().setName("OpenAPI-NG");
+        api.extension().setName("OpenAPI-Bifrost");
 
-        OpenAPINGTab tab = new OpenAPINGTab(api);
+        OpenAPIBifrostTab tab = new OpenAPIBifrostTab(api);
         api.userInterface().applyThemeToComponent(tab);
-        api.userInterface().registerSuiteTab("OpenAPI-NG", tab);
+        api.userInterface().registerSuiteTab("OpenAPI-Bifrost", tab);
 
         api.extension().registerUnloadingHandler(tab::unload);
 
-        api.logging().logToOutput("OpenAPI-NG loaded.");
+        api.logging().logToOutput("OpenAPI-Bifrost loaded.");
     }
 }

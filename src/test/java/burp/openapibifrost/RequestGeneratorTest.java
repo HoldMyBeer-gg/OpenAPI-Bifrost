@@ -1,4 +1,4 @@
-package burp.openapilng;
+package burp.openapibifrost;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -56,14 +56,6 @@ class RequestGeneratorTest {
         String req = new String(raw, StandardCharsets.UTF_8);
         assertTrue(req.contains("Content-Type: application/json"));
         assertTrue(req.contains("{}"));
-    }
-
-    @Test
-    void buildInsertionPointRanges_getNoParams_returnsEmpty() {
-        var ep = new ApiEndpoint(1, "https", "GET", "https://api.test.com", "/users", List.of(), "");
-        byte[] raw = generator.buildRequestBytes(ep, null);
-        var ranges = generator.buildInsertionPointRanges(raw, ep);
-        assertTrue(ranges.isEmpty());
     }
 
     @Test

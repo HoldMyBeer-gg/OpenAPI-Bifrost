@@ -1,6 +1,5 @@
-package burp.openapilng;
+package burp.openapibifrost;
 
-import burp.api.montoya.core.Range;
 import burp.api.montoya.http.HttpService;
 import burp.api.montoya.http.message.requests.HttpRequest;
 import burp.api.montoya.intruder.HttpRequestTemplate;
@@ -9,7 +8,6 @@ import burp.api.montoya.intruder.HttpRequestTemplateGenerationOptions;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.nio.charset.StandardCharsets;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.regex.Pattern;
 
@@ -80,10 +78,11 @@ public class RequestGenerator {
         } catch (URISyntaxException e) {
             request.append("Host: localhost\r\n");
         }
-        request.append("User-Agent: OpenAPI-NG/1.0\r\n");
+        request.append("User-Agent: OpenAPI-Bifrost/1.0\r\n");
         if (hasBody) {
+            int bodyLength = BODY_PLACEHOLDER.getBytes(StandardCharsets.UTF_8).length;
             request.append("Content-Type: application/json\r\n");
-            request.append("Content-Length: 2\r\n");
+            request.append("Content-Length: ").append(bodyLength).append("\r\n");
         }
         request.append("\r\n");
         if (hasBody) {
@@ -123,71 +122,6 @@ public class RequestGenerator {
                 request,
                 HttpRequestTemplateGenerationOptions.REPLACE_BASE_PARAMETER_VALUE_WITH_OFFSETS
         );
-    }
-
-    /**
-     * Builds insertion point ranges for Audit Scanner based on OpenAPI parameter definitions.
-     * Returns ranges for path params, query params, and the request body (for POST/PUT/PATCH).
-     *
-     * @param request the HTTP request (used to resolve byte offsets)
-     * @param endpoint the endpoint with parameter definitions
-     * @return list of ranges where the scanner should inject payloads
-     */
-    public List<Range> buildInsertionPointRanges(HttpRequest request, ApiEndpoint endpoint) {
-        return buildInsertionPointRanges(request.toByteArray().getBytes(), endpoint);
-    }
-
-    /**
-     * Package-visible for testing without Montoya {@link HttpRequest}.
-     *
-     * @param raw raw request bytes
-     * @param endpoint endpoint with parameter definitions
-     * @return list of insertion point ranges
-     */
-    List<Range> buildInsertionPointRanges(byte[] raw, ApiEndpoint endpoint) {
-        List<Range> ranges = new ArrayList<>();
-        String rawStr = new String(raw, StandardCharsets.UTF_8);
-
-        // Find path parameter placeholder positions (e.g. "1" in /users/1)
-        String path = substitutePathParams(endpoint.getPath(), endpoint.getParameters());
-        for (ApiEndpoint.ParameterInfo p : endpoint.getParameters()) {
-            if ("path".equals(p.getLocation())) {
-                String placeholder = p.getPlaceholderValue();
-                if (placeholder == null || placeholder.isEmpty()) placeholder = PATH_PARAM_PLACEHOLDER;
-                int idx = rawStr.indexOf(placeholder);
-                if (idx >= 0) {
-                    ranges.add(Range.range(idx, idx + placeholder.length()));
-                }
-            }
-        }
-
-        // Query params: find name=value positions
-        for (ApiEndpoint.ParameterInfo p : endpoint.getParameters()) {
-            if ("query".equals(p.getLocation())) {
-                String search = p.getName() + "=" + p.getPlaceholderValue();
-                int idx = rawStr.indexOf(search);
-                if (idx >= 0) {
-                    int valueStart = idx + p.getName().length() + 1;
-                    ranges.add(Range.range(valueStart, valueStart + p.getPlaceholderValue().length()));
-                }
-            }
-        }
-
-        // Body placeholder
-        if ("POST".equalsIgnoreCase(endpoint.getMethod())
-                || "PUT".equalsIgnoreCase(endpoint.getMethod())
-                || "PATCH".equalsIgnoreCase(endpoint.getMethod())) {
-            int bodyIdx = rawStr.indexOf("\r\n\r\n");
-            if (bodyIdx >= 0) {
-                bodyIdx += 4;
-                int bodyEnd = rawStr.length();
-                if (bodyEnd > bodyIdx) {
-                    ranges.add(Range.range(bodyIdx, bodyEnd));
-                }
-            }
-        }
-
-        return ranges;
     }
 
     private String substitutePathParams(String path, List<ApiEndpoint.ParameterInfo> params) {

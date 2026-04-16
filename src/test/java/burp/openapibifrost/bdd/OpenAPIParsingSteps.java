@@ -1,7 +1,7 @@
-package burp.openapilng.bdd;
+package burp.openapibifrost.bdd;
 
-import burp.openapilng.ApiEndpoint;
-import burp.openapilng.OpenAPIParser;
+import burp.openapibifrost.ApiEndpoint;
+import burp.openapibifrost.OpenAPIParser;
 import io.cucumber.java.en.And;
 import io.cucumber.java.en.Given;
 import io.cucumber.java.en.Then;
