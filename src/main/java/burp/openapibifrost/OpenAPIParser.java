@@ -94,8 +94,13 @@ public class OpenAPIParser {
                         if (p == null) continue;
                         String paramName = p.getName();
                         String paramIn = p.getIn() != null ? p.getIn().toLowerCase() : "query";
-                        String placeholder = "1";
-                        if ("query".equals(paramIn) || "header".equals(paramIn) || "cookie".equals(paramIn)) {
+                        String placeholder;
+                        if ("path".equals(paramIn)) {
+                            placeholder = derivePathPlaceholder(p);
+                        } else {
+                            // Query/header/cookie placeholders remain empty — Scanner/Intruder
+                            // will inject payloads there, and sending empty strings is a
+                            // reasonable default for a preview request.
                             placeholder = "";
                         }
                         params.add(new ApiEndpoint.ParameterInfo(paramName, paramIn, placeholder));
@@ -145,6 +150,38 @@ public class OpenAPIParser {
      * mapping swagger-parser types to our internal {@link SecuritySchemeInfo}. Preserves
      * declaration order via LinkedHashMap semantics in the underlying parser.
      */
+    /**
+     * Picks a syntactically-valid path-parameter placeholder from a swagger-parser
+     * {@link Parameter}. Uses {@code example} when present, falling back to schema
+     * {@code type}/{@code format}-aware defaults. Returns {@value PlaceholderGenerator#DEFAULT}
+     * when no schema info is available.
+     */
+    static String derivePathPlaceholder(Parameter p) {
+        String type = null;
+        String format = null;
+        String example = null;
+        if (p.getExample() != null) example = String.valueOf(p.getExample());
+        if (example == null && p.getExamples() != null && !p.getExamples().isEmpty()) {
+            var firstExample = p.getExamples().values().iterator().next();
+            if (firstExample != null && firstExample.getValue() != null) {
+                example = String.valueOf(firstExample.getValue());
+            }
+        }
+        io.swagger.v3.oas.models.media.Schema<?> schema = p.getSchema();
+        if (schema != null) {
+            type = schema.getType();
+            format = schema.getFormat();
+            if (example == null && schema.getExample() != null) {
+                example = String.valueOf(schema.getExample());
+            }
+            // Fall back to first enum value if still empty.
+            if (example == null && schema.getEnum() != null && !schema.getEnum().isEmpty()) {
+                example = String.valueOf(schema.getEnum().get(0));
+            }
+        }
+        return PlaceholderGenerator.placeholderFor(type, format, example);
+    }
+
     static List<SecuritySchemeInfo> extractSecuritySchemes(OpenAPI openAPI) {
         Components components = openAPI.getComponents();
         if (components == null || components.getSecuritySchemes() == null) {

@@ -315,4 +315,154 @@ class OpenAPIParserSecurityTest {
     private static SecuritySchemeInfo findByName(List<SecuritySchemeInfo> list, String name) {
         return list.stream().filter(s -> name.equals(s.name())).findFirst().orElseThrow();
     }
+
+    @Test
+    void pathParamWithUuidFormat_usesUuidPlaceholder() {
+        String spec = """
+                openapi: 3.0.0
+                info: {title: x, version: "1"}
+                paths:
+                  /reports/{report_id}:
+                    get:
+                      parameters:
+                        - name: report_id
+                          in: path
+                          required: true
+                          schema: {type: string, format: uuid}
+                      responses: {'200': {description: ok}}
+                """;
+        var result = parser.parse("t", spec);
+        ApiEndpoint ep = result.getEndpoints().get(0);
+        ApiEndpoint.ParameterInfo reportId = ep.getParameters().get(0);
+        assertEquals("path", reportId.getLocation());
+        assertEquals("00000000-0000-0000-0000-000000000001", reportId.getPlaceholderValue());
+    }
+
+    @Test
+    void pathParamWithIntegerType_usesOne() {
+        String spec = """
+                openapi: 3.0.0
+                info: {title: x, version: "1"}
+                paths:
+                  /users/{id}:
+                    get:
+                      parameters:
+                        - name: id
+                          in: path
+                          required: true
+                          schema: {type: integer}
+                      responses: {'200': {description: ok}}
+                """;
+        var result = parser.parse("t", spec);
+        assertEquals("1",
+                result.getEndpoints().get(0).getParameters().get(0).getPlaceholderValue());
+    }
+
+    @Test
+    void pathParamWithExample_usesExample() {
+        String spec = """
+                openapi: 3.0.0
+                info: {title: x, version: "1"}
+                paths:
+                  /orgs/{org_id}:
+                    get:
+                      parameters:
+                        - name: org_id
+                          in: path
+                          required: true
+                          example: "acme-corp"
+                          schema: {type: string, format: uuid}
+                      responses: {'200': {description: ok}}
+                """;
+        var result = parser.parse("t", spec);
+        // Example wins over schema format.
+        assertEquals("acme-corp",
+                result.getEndpoints().get(0).getParameters().get(0).getPlaceholderValue());
+    }
+
+    @Test
+    void pathParamWithSchemaExample_usesIt() {
+        // No format — swagger-parser would strip examples that don't match a declared format
+        // (e.g. a non-UUID example on a UUID field). This plain-string schema preserves the example.
+        String spec = """
+                openapi: 3.0.0
+                info: {title: x, version: "1"}
+                paths:
+                  /reports/{id}:
+                    get:
+                      parameters:
+                        - name: id
+                          in: path
+                          required: true
+                          schema:
+                            type: string
+                            example: "abc-123"
+                      responses: {'200': {description: ok}}
+                """;
+        var result = parser.parse("t", spec);
+        assertEquals("abc-123",
+                result.getEndpoints().get(0).getParameters().get(0).getPlaceholderValue());
+    }
+
+    @Test
+    void pathParamWithEnum_usesFirstEnumValue() {
+        String spec = """
+                openapi: 3.0.0
+                info: {title: x, version: "1"}
+                paths:
+                  /severity/{level}:
+                    get:
+                      parameters:
+                        - name: level
+                          in: path
+                          required: true
+                          schema:
+                            type: string
+                            enum: [critical, high, medium, low]
+                      responses: {'200': {description: ok}}
+                """;
+        var result = parser.parse("t", spec);
+        assertEquals("critical",
+                result.getEndpoints().get(0).getParameters().get(0).getPlaceholderValue());
+    }
+
+    @Test
+    void pathParamWithoutSchema_usesDefault() {
+        String spec = """
+                openapi: 3.0.0
+                info: {title: x, version: "1"}
+                paths:
+                  /legacy/{name}:
+                    get:
+                      parameters:
+                        - name: name
+                          in: path
+                          required: true
+                      responses: {'200': {description: ok}}
+                """;
+        var result = parser.parse("t", spec);
+        assertEquals("1",
+                result.getEndpoints().get(0).getParameters().get(0).getPlaceholderValue());
+    }
+
+    @Test
+    void queryParam_remainsEmptyPlaceholder() {
+        String spec = """
+                openapi: 3.0.0
+                info: {title: x, version: "1"}
+                paths:
+                  /search:
+                    get:
+                      parameters:
+                        - name: q
+                          in: query
+                          schema: {type: string, format: uuid}
+                      responses: {'200': {description: ok}}
+                """;
+        var result = parser.parse("t", spec);
+        // Query params stay empty; smart placeholders only apply to path params where
+        // the value becomes part of the URL path.
+        assertEquals("",
+                result.getEndpoints().get(0).getParameters().get(0).getPlaceholderValue());
+    }
 }
